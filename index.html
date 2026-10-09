@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.35  09-10-2026  Trapezium zoals het rekenprogramma van MCA: vlaktedruk per glijsnelheid, inschakelduur uit PV, kritisch toerental, wrijving per moer; belastingsaart en smering (droog → product engineers)
   1.34  09-10-2026  d·n-grens voor alle moeren met smeeradvies, axiale toets vastlager, inschakelduur trapezium, last uit geleiding en versnelling
   1.33  09-10-2026  FB-001: toelichting bij bedrijf 'Regelmatig' aangepast
   1.32  09-10-2026  Feedbackmail met soort en technische gegevens om meldingen na te spelen
@@ -386,7 +387,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.34 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.35 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -1066,6 +1067,18 @@ var Catalogus = (function () {
     return rij ? MOER_VORMEN[tabel.vorm](rij) : null;
   }
 
+  // Moerlengte van een trapeziummoer voor de vlaktedruk (v1.35, spec
+  // 2026-10-09-trapezium-mcalc §2.1). BFM, BRM en BSM zijn per maat even lang
+  // (p.15–17); ontbreekt de gekozen moer bij deze maat, dan geldt BFM.
+  function trapeziumMoerlengte(code, d, P) {
+    var codes = ['BFM', 'BRM', 'BSM'].indexOf(code) !== -1 ? [code, 'BFM'] : ['BFM'];
+    for (var i = 0; i < codes.length; i++) {
+      var m = moerMaten('trapezium', codes[i], d, P);
+      if (m) return m.lengte;
+    }
+    return null;
+  }
+
   // Spec 2026-10-02-lead-screw-gerold-miniatuur-ontwerp §4 — feedback
   // opdrachtgever 02-10-2026 punt 4: "Miniatuur voor nu even 'offline'
   // halen, hier moeten we intern nog over discussiëren." Eén vlag: de data
@@ -1400,6 +1413,7 @@ var Catalogus = (function () {
     wbkUitvoeringen: wbkUitvoeringen,
     parseLagerunit: parseLagerunit,
     moerMaten: moerMaten,
+    trapeziumMoerlengte: trapeziumMoerlengte,
     moerDraaggetal: moerDraaggetal,
     moerStatisch: moerStatisch,
     moerDnGrens: moerDnGrens,
@@ -1638,6 +1652,7 @@ var ConfiguratorLogica = (function () {
   // miniatuurreeks actief is (spec §4) — data en opties blijven staan.
   var ALLEEN_KOGEL_MINIATUUR = function (t) { return t === 'kogelomloop' && Catalogus.MINIATUUR_ACTIEF; };
   var ALLEEN_TRAP = function (t) { return t === 'trapezium'; };
+  var KOGEL_OF_TRAP = function (t) { return t === 'kogelomloop' || t === 'trapezium'; };
   var ALLEEN_DRAAD = function (t) { return t === 'draadspindel'; };
   var TYPEN = ['kogelomloop', 'trapezium', 'draadspindel'];
 
@@ -2156,6 +2171,12 @@ var ConfiguratorLogica = (function () {
     { naam: 'lagering',         label: 'Lagering',       zichtbaar: BEIDE, opties: null },
     { naam: 'moermateriaal',    label: 'Moermateriaal',  zichtbaar: ALLEEN_TRAP,  opties: GELDIGE_MOERMATERIALEN },
     { naam: 'bedrijf',          label: 'Bedrijf',        zichtbaar: ALLEEN_TRAP,  opties: GELDIGE_BEDRIJF },
+    // Spec 2026-10-09-trapezium-mcalc §2.2/§2.4 (v1.35): belastingsaart (f_i
+    // op de PV-waarde) bij trapezium; smering bij kogelomloop en trapezium
+    // (de draadspindelmoer is zelfsmerend).
+    { naam: 'belastingsaart',   label: 'Belastingsaart', zichtbaar: ALLEEN_TRAP,
+      opties: ['gecontroleerd', 'hard', 'variabel', 'schokken', 'weetniet'] },
+    { naam: 'smering',          label: 'Smering',        zichtbaar: KOGEL_OF_TRAP, opties: ['gesmeerd', 'droog'] },
     // Spec 2026-10-05-levensduur-statisch-ontwerp §2.1/§5 (v1.20): vereiste
     // bedrijfsuren uit vier velden (uur/dag × dag/week × week/jaar × jaar,
     // minimaal 10.000 u) en de statische veiligheid, alleen bij kogelomloop.
@@ -2367,6 +2388,12 @@ var ConfiguratorLogica = (function () {
     valideerPositief(belasting.krachtN, 'krachtN');
     valideerPositief(belasting.snelheidMmPerSec, 'snelheidMmPerSec');
 
+    // Besluit opdrachtgever 09-10-2026 (spec 2026-10-09-trapezium-mcalc §2.4):
+    // zonder smering geen doorrekening, behalve bij een zelfsmerende moer.
+    if (Rekenkern.smeringOntbreekt(cfg.type, belasting.moermateriaal, belasting.smering)) {
+      throw new Error(Rekenkern.SMERING_PE_MELDING);
+    }
+
     var maat = maatVoor(cfg.type, cfg.d, cfg.P);
     var n = Rekenkern.benodigdToerental(belasting.snelheidMmPerSec, cfg.P);
 
@@ -2465,20 +2492,27 @@ var ConfiguratorLogica = (function () {
       // rekent trapezium identiek). Lagering valideert Rekenkern zelf.
       valideerPositief(belasting.overspanningMm, 'overspanningMm');
       var knikT = Rekenkern.knik(maat.d3, belasting.overspanningMm, belasting.lagering);
-      var toerT = Rekenkern.kritischToerental(maat.d3, belasting.overspanningMm, belasting.lagering);
 
       var gangen = maat.gangen || 1;
       var geometrie = Rekenkern.trapeziumGeometrie(cfg.d, cfg.P, gangen);
+      // v1.35: kritisch toerental zoals MCAlc (spec 2026-10-09-trapezium-mcalc §2.5).
+      var toerT = Rekenkern.kritischToerentalTrapezium(geometrie.d2, belasting.overspanningMm, belasting.lagering);
       var zelfrem = Rekenkern.zelfremklasse(geometrie.phi, belasting.moermateriaal);
-      var grens = Rekenkern.grenzenVoor(belasting.moermateriaal, belasting.bedrijf);
-      var vgMax = grens.vgMax;
-      var vg = Rekenkern.glijsnelheid(n, geometrie.d2);
-      var moerlengte = Rekenkern.moerlengte(belasting.krachtN, cfg.P, grens.pZul, geometrie.d2, gangen);
+      // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35): vlaktedruk met de
+      // echte moerlengte tegen de toelaatbare druk bij de glijsnelheid, en de
+      // toelaatbare inschakelduur uit de PV-waarde — zoals MCAlc.
+      var lm = Catalogus.trapeziumMoerlengte(cfg.moertype, cfg.d, cfg.P);
+      if (lm === null) throw new Error('deze maat is nog niet doorgerekend: moerlengte ontbreekt in de catalogus');
+      var druk = Rekenkern.trapeziumDrukToets(belasting.krachtN, n, geometrie.d2, cfg.P, gangen, lm,
+        belasting.moermateriaal, belasting.belastingsaart);
 
-      // Bewust asymmetrisch, net als in Rekenkern: het koppel met een
-      // stroeve (hoge-mu) aanname, de zelfremklasse hierboven met een
-      // soepele (lage-mu) — zie Rekenkern.MU voor de onderbouwing.
-      var etaT = Rekenkern.rendement(geometrie.phi, Rekenkern.wrijvingshoek(Rekenkern.MU.koppel));
+      // Het koppel met de wrijving van de moer uit de tabel van MCA (droog of
+      // gesmeerd; RVS-moer = staal), de zelfremklasse hierboven blijft bij de
+      // soepele (lage-mu) aanname van Rekenkern.MU.
+      var wrijvingMateriaal = (cfg.materiaalMoer === 'D' || cfg.materiaalMoer === 'E') ? 'staal'
+        : belasting.moermateriaal;
+      var etaT = Rekenkern.rendement(geometrie.phi,
+        Rekenkern.wrijvingshoek(Rekenkern.moerWrijving(wrijvingMateriaal, belasting.smering)));
       var koppelT = Rekenkern.aandrijfkoppel(belasting.krachtN, cfg.P, etaT);
       var losbreek = Rekenkern.losbreekkoppelTrapezium(belasting.krachtN, cfg.P, cfg.d, cfg.P, gangen);
       var vermogenT = Rekenkern.aandrijfvermogen(koppelT, n);
@@ -2494,9 +2528,20 @@ var ConfiguratorLogica = (function () {
         // lopen doordat ze uit twee berekeningen komen.
         zelfremming: zelfrem,
         remfunctie: zelfrem.remfunctie,
-        glijsnelheid: vg,
-        vgMax: vgMax,
-        glijsnelheidOk: vg <= vgMax,
+        // v1.35: de glijsnelheid is in orde zolang de vlaktedruk bij die
+        // snelheid toelaatbaar is; vgMax is de hoogste snelheid waarbij dat zo is.
+        glijsnelheid: druk.glijsnelheid,
+        vgMax: druk.vgMax,
+        glijsnelheidOk: druk.vlaktedrukOk,
+        vgTabel: druk.vgTabel,
+        vlaktedruk: druk.vlaktedruk,
+        pMax: druk.pMax,
+        vlaktedrukOk: druk.vlaktedrukOk,
+        veiligheidVlaktedruk: druk.veiligheidVlaktedruk,
+        fi: druk.fi,
+        pvWaarde: druk.pvWaarde,
+        edMax: druk.edMax,
+        edSmering: druk.edSmering,
         // Spec §2/§4 (v1.24): knik en toerental als bij kogelomloop. krachtOk
         // blijft hieronder de draaggetaltoets, dus heet de knikuitkomst hier
         // knikOk. Een Tr 20×4 van 3000 mm onder 10 kN (F_k,max ≈ 0,66 kN)
@@ -2506,10 +2551,7 @@ var ConfiguratorLogica = (function () {
         toerentalOk: n <= toerT.nCrMax,
         FkMax: knikT.FkMax,
         knikOk: belasting.krachtN <= knikT.FkMax,
-        // B4 — leeg bij brons (A) en kunststof (C); gevuld bij RVS (D/E).
-        wrijvingMelding: (cfg.materiaalMoer === 'D' || cfg.materiaalMoer === 'E')
-          ? Rekenkern.RVS_WRIJVING_MELDING : null,
-        moerlengte: moerlengte,
+        moerlengte: lm,
         // Zelfde naam als bij kogelomloop hierboven (krachtN/krachtOk): één
         // herkenbaar in-orde-of-niet-veld ongeacht het type, zodat een
         // aanroeper niet per tak hoeft te weten hoe de krachttoets heet.
@@ -2519,7 +2561,6 @@ var ConfiguratorLogica = (function () {
         krachtOk: Rekenkern.draaggetalOk(belasting.krachtN, maat.cDynBFM),
         // Spec 2026-10-09-dn-lager-geleiding §2.2/§2.3 (v1.34).
         vastlager: vastlagerToets(cfg, belasting.krachtN),
-        inschakelduurMelding: Rekenkern.inschakelduurMelding(belasting.bedrijf),
         eta: etaT,
         aandrijfkoppel: koppelT,
         losbreekkoppel: losbreek,
@@ -2646,6 +2687,25 @@ var Rekenkern = (function () {
     return { nCr: nCr, nCrMax: 0.8 * nCr };
   }
 
+  // Kritisch toerental TRAPEZIUM (v1.35, spec 2026-10-09-trapezium-mcalc
+  // §2.5; Onderzoek/2026-10-09-kritisch-toerental-trapezium.md): zoals het
+  // rekenprogramma van MCA, de gewichtsformule uit de trapeziumcatalogus
+  // (n_kr = 30/π · √(21·10⁴·d2⁴·10⁴ / (0,013·F·la³·20)), F = gewicht van de
+  // vrije lengte bij Ø d2 en 7,8 kg/dm³). Omgewerkt: n_kr = 1,107·10⁸ · d2 / la².
+  // MCAlc past de lagerfactor f_kb (0,32 / 1,0 / 1,55 / 2,24) niet toe; de tool
+  // volgt dat, maar laat de factor wél gelden waar hij onder 1 ligt
+  // (vast-vrij), zodat de tool nooit hoger uitkomt dan de catalogus.
+  // Tr 28×5, la 1150 mm: 0,8 · 2134,6 = 1707,7 /min (MCAlc: 1708).
+  var TRAPEZIUM_NKR_CONSTANTE = 1.107e8;
+  var TRAPEZIUM_FKB = { 'vast-vrij': 0.32, 'los-los': 1.0, 'vast-los': 1.55, 'vast-vast': 2.24 };
+  function kritischToerentalTrapezium(d2, la, lagering) {
+    if (d2 <= 0) throw new Error('d2 moet positief zijn, kreeg ' + d2);
+    if (la <= 0) throw new Error('la moet positief zijn, kreeg ' + la);
+    if (TRAPEZIUM_FKB[lagering] === undefined) throw new Error('onbekende lagering: ' + lagering);
+    var nKr = TRAPEZIUM_NKR_CONSTANTE * d2 / (la * la);
+    return { nCr: nKr, nCrMax: 0.8 * Math.min(TRAPEZIUM_FKB[lagering], 1) * nKr };
+  }
+
   // Kinematica: aantal omwentelingen per minuut volgt uit lineaire snelheid
   // (mm/s) gedeeld door spoed (mm/omwenteling), vermenigvuldigd met 60 s/min.
   function benodigdToerental(vMmPerSec, spoedMm) {
@@ -2763,15 +2823,9 @@ var Rekenkern = (function () {
   // openstaand punt 6 gesloten) en knik() en kritischToerental() hierboven
   // rekenen er net zo mee als bij kogelomloop.
 
-  // B4 — alle wrijvingswaarden hierboven (MU) komen uit de Mädler-tabel voor
-  // staal op CuSn7ZnPb. Voor RVS-op-staal publiceert geen enkele geraadpleegde
-  // bron een wrijvingscoëfficiënt, dus een RVS-moer wordt stilzwijgend met
-  // bronswaarden doorgerekend. Dat mag niet stilzwijgend blijven.
-  var RVS_WRIJVING_MELDING =
-    'De moer is in RVS gekozen. Alle wrijvingswaarden in deze doorrekening — rendement, ' +
-    'aandrijfkoppel, losbreekkoppel en zelfremklasse — komen uit de wrijvingstabel voor staal ' +
-    'op brons (CuSn7ZnPb); voor RVS op staal zijn geen wrijvingsgegevens beschikbaar. Die ' +
-    'uitkomsten zijn voor een RVS-moer indicatief.';
+  // B4 (tot v1.34) — de melding dat RVS-uitkomsten indicatief waren, is in
+  // v1.35 vervallen: de wrijvingstabel van MCA (MOER_WRIJVING hieronder) geeft
+  // ook staal, en het koppel rekent daar nu mee.
 
   // KAMMERER p.132: 10 N/mm2 algemeen. NEFF hanteert voor bewegingsaandrijvingen
   // 5 N/mm2. De tool rekent standaard met de conservatieve waarde; MCA moet
@@ -2968,14 +3022,138 @@ var Rekenkern = (function () {
     return gewichtsdeel + massaKg * a;
   }
 
-  // Spec §2.3: trapezium is volgens de interne handleiding geschikt voor een
-  // inschakelduur tot circa 10 % per 6 minuten. Melding bij regelmatig en
-  // continu bedrijf, niet bij incidenteel.
-  var INSCHAKELDUUR_MELDING_TRAPEZIUM =
-    'Een trapeziumspindel is geschikt voor een inschakelduur tot circa 10 % (per 6 minuten). ' +
-    'Is die hoger, dan adviseren wij een kogelomloopspindel.';
-  function inschakelduurMelding(bedrijf) {
-    return (bedrijf === 'regelmatig' || bedrijf === 'continu') ? INSCHAKELDUUR_MELDING_TRAPEZIUM : null;
+  // Spec 2026-10-09-trapezium-mcalc §2.3 (v1.35; vervangt de vaste 10 %-
+  // melding van v1.34): bij regelmatig of continu bedrijf en een toelaatbare
+  // inschakelduur onder 100 % (zie inschakelduurUitPV) een melding met het
+  // berekende percentage. Anders null.
+  function inschakelduurTekst(edMax, bedrijf) {
+    if (bedrijf !== 'regelmatig' && bedrijf !== 'continu') return null;
+    if (typeof edMax !== 'number' || edMax >= 100) return null;
+    return 'Bij deze belasting en snelheid is de toelaatbare inschakelduur van de trapeziumspindel ' +
+      'circa ' + edMax + ' %. Is de inschakelduur hoger, dan adviseren wij een kogelomloopspindel.';
+  }
+
+  // ── v1.35: trapezium zoals het rekenprogramma van MCA (MCAlc) ───────────
+  // Spec 2026-10-09-trapezium-mcalc-ontwerp. Alle tabellen hieronder zijn
+  // opgave opdrachtgever 09-10-2026 (de tabellen achter MCAlc 2.0); het
+  // rekenrapport Tr 28×5 (5400 N, 0,1 m/s) wordt er exact mee nagerekend.
+
+  // Toelaatbare vlaktedruk (N/mm²) per glijsnelheid op de flankdiameter, in
+  // stappen van 0,1 m/s (0,1 … 2,9). Kolom "CuSn- en CuAl-legering / staal"
+  // (brons en RVS-moer) en PA (kunststof, 1 N/mm² tot 0,6 m/s).
+  var P_MAX_METAAL = [19.3, 18.6, 18, 17.3, 16.6, 16, 15.3, 14.6, 14, 13.3, 12.6, 12, 11.3, 10.6,
+    10, 9.3, 8.6, 8, 7.3, 6.6, 6, 5.3, 4.6, 4, 3.3, 2.6, 2, 1.3, 0.6];
+  var P_MAX_KUNSTSTOF = [1, 1, 1, 1, 1, 1];
+
+  function pMaxRij(moermateriaal) {
+    if (moermateriaal !== 'brons' && moermateriaal !== 'kunststof') {
+      throw new Error('moermateriaal moet één van deze zijn: brons, kunststof; kreeg ' + moermateriaal);
+    }
+    return moermateriaal === 'kunststof' ? P_MAX_KUNSTSTOF : P_MAX_METAAL;
+  }
+
+  // Zoals MCAlc: de glijsnelheid naar boven afgerond op 0,1 m/s (1,602 →
+  // rij 1,7 → 8,6 N/mm²), minimaal de rij 0,1. Boven de tabel: 0 (niet
+  // toelaatbaar). Geeft ook de gebruikte tabelsnelheid terug.
+  function toelaatbareVlaktedruk(vg, moermateriaal) {
+    positiefGetal(vg, 'vg');
+    var rij = pMaxRij(moermateriaal);
+    var stap = Math.max(1, Math.ceil(vg * 10 - 1e-9));
+    return { pMax: stap <= rij.length ? rij[stap - 1] : 0, vgTabel: stap / 10 };
+  }
+
+  // De hoogste glijsnelheid (m/s, tabelstap) waarbij de vlaktedruk p nog
+  // toelaatbaar is; 0 als zelfs de rij 0,1 m/s te laag is.
+  function maxGlijsnelheid(p, moermateriaal) {
+    positiefGetal(p, 'p');
+    var rij = pMaxRij(moermateriaal);
+    var max = 0;
+    rij.forEach(function (pMax, i) { if (pMax >= p) max = (i + 1) / 10; });
+    return max;
+  }
+
+  // Belastingsaart → factor f_i op de PV-waarde. "Weet ik niet": 0,2, de
+  // veiligste waarde (besluit opdrachtgever 09-10-2026).
+  var BELASTINGSAART_FI = { variabel: 0.3, schokken: 0.2, gecontroleerd: 0.75, hard: 0.4, weetniet: 0.2 };
+  function belastingsaartFactor(keuze) {
+    return BELASTINGSAART_FI[keuze] === undefined ? BELASTINGSAART_FI.weetniet : BELASTINGSAART_FI[keuze];
+  }
+
+  // PV-waarde (N/mm² · m/min) = p · v_g · 60 / f_i (MCAlc: 2,407 × 1,602 × 60 / 0,75 = 308,6).
+  function pvWaarde(p, vg, fi) {
+    positiefGetal(p, 'p');
+    positiefGetal(vg, 'vg');
+    positiefGetal(fi, 'fi');
+    return p * vg * 60 / fi;
+  }
+
+  // Toelaatbare inschakelduur uit de PV-waarde, als opzoektabel zoals MCAlc
+  // (0 → 100 %, 21 → 10 %, 250 → 1 %; PV 308,6 → 1 %), met het smeeradvies.
+  var ED_TABEL = [
+    { vanaf: 250, ed: 1, smering: 'continu smering vereist' },
+    { vanaf: 21, ed: 10, smering: 'let op de smeerintervallen' },
+    { vanaf: 0, ed: 100, smering: 'periodiek smeren' }
+  ];
+  function inschakelduurUitPV(pv) {
+    if (typeof pv !== 'number' || !Number.isFinite(pv) || pv < 0) {
+      throw new Error('pv moet 0 of groter zijn, kreeg ' + pv);
+    }
+    for (var i = 0; i < ED_TABEL.length; i++) {
+      if (pv >= ED_TABEL[i].vanaf) return { edMax: ED_TABEL[i].ed, smering: ED_TABEL[i].smering };
+    }
+  }
+
+  // Wrijvingscoëfficiënt van de moer, droog en gesmeerd (opgave
+  // opdrachtgever). Voor het aandrijfkoppel; de zelfremklasse blijft bij MU.
+  var MOER_WRIJVING = {
+    brons: { droog: 0.2, gesmeerd: 0.1 },
+    staal: { droog: 0.15, gesmeerd: 0.1 },
+    kunststof: { droog: 0.1, gesmeerd: 0.05 }
+  };
+  function moerWrijving(materiaal, smering) {
+    var rij = MOER_WRIJVING[materiaal];
+    if (!rij) throw new Error('materiaal moet één van deze zijn: brons, staal, kunststof; kreeg ' + materiaal);
+    return smering === 'droog' ? rij.droog : rij.gesmeerd;
+  }
+
+  // De vlaktedruk- en inschakelduurtoets van MCAlc in één keer, voor
+  // controleer() en Advies.kies(): p = F·P/(Lm·π·d2·H1·gangen) met de echte
+  // moerlengte uit de catalogus, getoetst tegen p_max bij de glijsnelheid;
+  // veiligheid s_p = p_max / p; PV-waarde en toelaatbare inschakelduur.
+  function trapeziumDrukToets(F, n, d2, P, gangen, Lm, moermateriaal, belastingsaart) {
+    var vg = glijsnelheid(n, d2);
+    var p = vlaktedruk(F, P, Lm, d2, gangen);
+    var grens = toelaatbareVlaktedruk(vg, moermateriaal);
+    var fi = belastingsaartFactor(belastingsaart);
+    var pv = pvWaarde(p, vg, fi);
+    var ed = inschakelduurUitPV(pv);
+    return {
+      glijsnelheid: vg,
+      vgTabel: grens.vgTabel,
+      moerlengte: Lm,
+      vlaktedruk: p,
+      pMax: grens.pMax,
+      vlaktedrukOk: p <= grens.pMax,
+      veiligheidVlaktedruk: grens.pMax / p,
+      // De hoogste glijsnelheid die bij deze druk nog mag (zie maxGlijsnelheid).
+      vgMax: maxGlijsnelheid(p, moermateriaal),
+      fi: fi,
+      pvWaarde: pv,
+      edMax: ed.edMax,
+      edSmering: ed.smering
+    };
+  }
+
+  // Besluit opdrachtgever 09-10-2026: zonder smering geeft de tool geen
+  // advies, behalve bij een zelfsmerende moer (kunststof bij trapezium, de
+  // moer van de draadspindel).
+  var SMERING_PE_MELDING = 'Zonder smering kan de tool geen advies geven. Neem contact op met de ' +
+    'product engineers van MCA: zij bepalen samen met u de juiste oplossing.';
+  function zelfsmerend(type, moermateriaal) {
+    return type === 'draadspindel' || (type === 'trapezium' && moermateriaal === 'kunststof');
+  }
+  function smeringOntbreekt(type, moermateriaal, smering) {
+    return smering === 'droog' && !zelfsmerend(type, moermateriaal);
   }
 
   // Belastingsfactor f_w (MCA p.40): steeds de BOVENKANT van de band bij de
@@ -3176,10 +3354,11 @@ var Rekenkern = (function () {
     LAGERFACTOR: LAGERFACTOR,
     knik: knik,
     kritischToerental: kritischToerental,
+    TRAPEZIUM_FKB: TRAPEZIUM_FKB,
+    kritischToerentalTrapezium: kritischToerentalTrapezium,
     benodigdToerental: benodigdToerental,
     MU: MU,
     KLASSE_UITLEG: KLASSE_UITLEG,
-    RVS_WRIJVING_MELDING: RVS_WRIJVING_MELDING,
     trapeziumGeometrie: trapeziumGeometrie,
     wrijvingshoek: wrijvingshoek,
     rendement: rendement,
@@ -3217,8 +3396,21 @@ var Rekenkern = (function () {
     smeeradvies: smeeradvies,
     GELEIDING_MU: GELEIDING_MU,
     axialeKrachtUitGewicht: axialeKrachtUitGewicht,
-    INSCHAKELDUUR_MELDING_TRAPEZIUM: INSCHAKELDUUR_MELDING_TRAPEZIUM,
-    inschakelduurMelding: inschakelduurMelding
+    inschakelduurTekst: inschakelduurTekst,
+    P_MAX_METAAL: P_MAX_METAAL,
+    P_MAX_KUNSTSTOF: P_MAX_KUNSTSTOF,
+    toelaatbareVlaktedruk: toelaatbareVlaktedruk,
+    maxGlijsnelheid: maxGlijsnelheid,
+    BELASTINGSAART_FI: BELASTINGSAART_FI,
+    belastingsaartFactor: belastingsaartFactor,
+    pvWaarde: pvWaarde,
+    inschakelduurUitPV: inschakelduurUitPV,
+    MOER_WRIJVING: MOER_WRIJVING,
+    moerWrijving: moerWrijving,
+    SMERING_PE_MELDING: SMERING_PE_MELDING,
+    zelfsmerend: zelfsmerend,
+    smeringOntbreekt: smeringOntbreekt,
+    trapeziumDrukToets: trapeziumDrukToets
   };
 })();
 </script>
@@ -3472,12 +3664,19 @@ var Advies = (function () {
   // dus de haalbare snelheid is de kleinste van de twee grenzen.
   // Faalt ELKE kandidaat al op kracht of knik, dan levert deze functie null:
   // dan is een snelheidsadvies misleidend, want geen enkele maat zou ooit passen.
-  function hoogsteHaalbareTrapeziumSnelheid(lijst, invoer, vgMax) {
+  // v1.35: de glijsnelheidsgrens volgt per maat uit de vlaktedruk (de hoogste
+  // tabelsnelheid waarbij p nog toelaatbaar is, Rekenkern.maxGlijsnelheid).
+  function hoogsteHaalbareTrapeziumSnelheid(lijst, invoer) {
     var beste = null;
     lijst.forEach(function (m) {
       if (m.cDynBFM === null || !Rekenkern.draaggetalOk(invoer.krachtN, m.cDynBFM)) return;
       if (Rekenkern.knik(m.d3, invoer.overspanningMm, invoer.lagering).FkMax < invoer.krachtN) return;
-      var nCrMax = Rekenkern.kritischToerental(m.d3, invoer.overspanningMm, invoer.lagering).nCrMax;
+      var lm = Catalogus.trapeziumMoerlengte('BFM', m.d, m.P);
+      if (lm === null) return;
+      var vgMax = Rekenkern.maxGlijsnelheid(
+        Rekenkern.vlaktedruk(invoer.krachtN, m.P, lm, m.d2, m.gangen || 1), invoer.moermateriaal);
+      if (vgMax <= 0) return;
+      var nCrMax = Rekenkern.kritischToerentalTrapezium(m.d2, invoer.overspanningMm, invoer.lagering).nCrMax;
       var vMax = Math.min((vgMax * 1000 * m.P) / (m.d2 * Math.PI), (nCrMax * m.P) / 60);
       if (!beste || vMax > beste.vMaxMmPerSec) {
         beste = { maat: m, vMaxMmPerSec: vMax };
@@ -3739,34 +3938,27 @@ var Advies = (function () {
         // ZIMM, NEFF; besluit opdrachtgever 05-10-2026) en dezelfde formules
         // als kogelomloop (MCA p.34–35): F_k,max = F_k/2, n_cr,max = 0,8·n_cr.
         var knikT = Rekenkern.knik(m.d3, invoer.overspanningMm, invoer.lagering);
-        var toerT = Rekenkern.kritischToerental(m.d3, invoer.overspanningMm, invoer.lagering);
+        // v1.35: kritisch toerental zoals MCAlc (spec 2026-10-09-trapezium-mcalc §2.5).
+        var toerT = Rekenkern.kritischToerentalTrapezium(m.d2, invoer.overspanningMm, invoer.lagering);
         uitkomst.knik = knikT;
         uitkomst.toerental = toerT;
         if (toerT.nCrMax < n || knikT.FkMax < invoer.krachtN) continue;
-        // krachtN speelt verder mee via moerlengte/vlaktedruk (informatief,
-        // geen daadwerkelijke moerlengte-tabel om tegen af te keuren, punt 4)
-        // én via cDynBFM.
+        // cDynBFM is een DYNAMISCH draaggetal (MCA Kugelberger V3.4 p.15),
+        // een orde-grootte-afkeuring; de BFM-waarden gelden voorlopig ook voor
+        // BRM en BSM (punt 17) — vandaar de vaste infowaarschuwing hieronder.
         //
-        // cDynBFM is een DYNAMISCH draaggetal voor levensduurberekening
-        // (MCA Kugelberger V3.4 p.15), geen statische breukgrens. Dat krachtN
-        // hieronder blijft, betekent dus niet dat deze maat is doorgerekend op
-        // levensduur (L10/Lh) — dat blijft buiten scope. Het is een
-        // orde-grootte-afkeuring: een kracht die het draaggetal al overschrijdt
-        // is met zekerheid ongeschikt, een kracht eronder is niet daarmee
-        // "goedgekeurd". Voorlopig gelden de BFM-waarden ook voor BRM en BSM;
-        // hun eigen draaggetallen zijn nog niet overgenomen (punt 17) — vandaar
-        // de vaste infowaarschuwing hieronder bij elke geslaagde trapeziumkeuze.
-        var grens = Rekenkern.grenzenVoor(invoer.moermateriaal, invoer.bedrijf);
-        var pZul = grens.pZul;
-        var vgMax = grens.vgMax;
-        var vg = Rekenkern.glijsnelheid(n, m.d2);
-        var lm = Rekenkern.moerlengte(invoer.krachtN, m.P, pZul, m.d2, m.gangen);
-        uitkomst.glijsnelheid = vg;
-        uitkomst.moerlengte = lm;
-        uitkomst.pZul = pZul;
+        // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35): de vlaktedruk met
+        // de echte moerlengte (BFM; BRM en BSM zijn even lang) moet bij de
+        // glijsnelheid toelaatbaar zijn, en de toelaatbare inschakelduur volgt
+        // uit de PV-waarde — zoals MCAlc.
+        var lmT = Catalogus.trapeziumMoerlengte('BFM', m.d, m.P);
+        if (lmT === null) continue;
+        var drukT = Rekenkern.trapeziumDrukToets(invoer.krachtN, n, m.d2, m.P, m.gangen || 1, lmT,
+          invoer.moermateriaal, invoer.belastingsaart);
+        Object.assign(uitkomst, drukT);
         uitkomst.zelfremming = Rekenkern.zelfremklasse(m.phi, invoer.moermateriaal);
         uitkomst.cDynBFM = m.cDynBFM;
-        if (vg > vgMax || !Rekenkern.draaggetalOk(invoer.krachtN, m.cDynBFM)) continue;
+        if (!drukT.vlaktedrukOk || !Rekenkern.draaggetalOk(invoer.krachtN, m.cDynBFM)) continue;
       }
 
       gekozen = m;
@@ -3814,8 +4006,7 @@ var Advies = (function () {
       // hoogsteHaalbareTrapeziumSnelheid hierboven) — in dat geval is de
       // hoogst haalbare snelheid een bruikbaar antwoord, "geen maat" niet.
       if (invoer.type === 'trapezium') {
-        var vgMaxVoorFallback = Rekenkern.grenzenVoor(invoer.moermateriaal, invoer.bedrijf).vgMax;
-        hoogsteHaalbareSnelheid = hoogsteHaalbareTrapeziumSnelheid(lijst, invoer, vgMaxVoorFallback);
+        hoogsteHaalbareSnelheid = hoogsteHaalbareTrapeziumSnelheid(lijst, invoer);
         if (hoogsteHaalbareSnelheid) {
           // Naar beneden afronden, nooit naar boven: dit is een boven-grens
           // ("maximaal haalbaar"), en normaal afronden kan het getoonde getal
@@ -3879,9 +4070,11 @@ var Advies = (function () {
       });
     }
 
-    // Spec 2026-10-09-dn-lager-geleiding §2.3 (v1.34).
-    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurMelding(invoer.bedrijf)) {
-      waarschuwingen.push({ ernst: 'info', tekst: Rekenkern.inschakelduurMelding(invoer.bedrijf) });
+    // Spec 2026-10-09-trapezium-mcalc §2.3 (v1.35, vervangt de vaste melding
+    // van v1.34): de toelaatbare inschakelduur uit de PV-waarde. Melding bij
+    // regelmatig of continu bedrijf, zodra die onder 100 % ligt.
+    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf)) {
+      waarschuwingen.push({ ernst: 'info', tekst: Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf) });
     }
 
     var uit = { maat: gekozen, berekend: berekend, waarschuwingen: waarschuwingen };
@@ -5081,12 +5274,20 @@ var WizardLogica = (function () {
           nlGetal(c.n, 0) + ' /min)', ok: !!c.toerentalOk },
       { label: 'Knikbelasting',
         tekst: 'Knikbelasting F_k,max: ' + nlGetal(c.FkMax, 0) + ' N (opgegeven: ' +
-          nlGetal(c.krachtN, 0) + ' N)', ok: !!c.knikOk }
+          nlGetal(c.krachtN, 0) + ' N)', ok: !!c.knikOk },
+      // Spec 2026-10-09-trapezium-mcalc §2.1/§2.3 (v1.35). De inschakelduur
+      // is geen toets maar een gegeven: ok null → zonder ✓/✗.
+      { label: 'Vlaktedruk',
+        tekst: 'Vlaktedruk moer (' + nlGetal(c.moerlengte, 0) + ' mm): ' + nlGetal(c.vlaktedruk, 2) +
+          ' N/mm² (toelaatbaar bij ' + nlGetal(c.vgTabel, 1) + ' m/s: ' + nlGetal(c.pMax, 1) + ' N/mm²)',
+        ok: !!c.vlaktedrukOk },
+      { label: 'Toelaatbare inschakelduur',
+        tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % — ' + c.edSmering, ok: null }
     ];
   }
 
   function passendeTypen(antwoorden) {
-    if (vraagtEngineering(antwoorden)) return [];
+    if (vraagtEngineering(antwoorden) || smeringOntbreekt(antwoorden)) return [];
     var opties = [];
     PASSEND_TYPEN.forEach(function (type) {
       // Antwoorden die maar bij één tak horen (trillingen, bedrijfsuren,
@@ -5588,6 +5789,34 @@ var WizardLogica = (function () {
         hint: 'Bijvoorbeeld: 3 seconden, 5000 cycli/dag'
       })
     ];
+    // Spec 2026-10-09-trapezium-mcalc §2.2/§2.4 (v1.35): smering bij
+    // kogelomloop en trapezium (de draadspindelmoer is zelfsmerend), en de
+    // belastingsaart (f_i op de PV-waarde) bij trapezium.
+    if (tak !== 'draadspindel') {
+      vragen.push(vraag({
+        sleutel: 'smering',
+        tekst: 'Wordt de spindel gesmeerd?',
+        opties: [
+          optie('gesmeerd', 'Gesmeerd', 'Met vet of olie'),
+          optie('droog', 'Droog (zonder smering)', tak === 'trapezium'
+            ? 'Alleen met een kunststof moer; anders bepalen de product engineers van MCA de oplossing'
+            : 'Zonder smering bepalen de product engineers van MCA de oplossing')
+        ]
+      }));
+    }
+    if (tak === 'trapezium') {
+      vragen.push(vraag({
+        sleutel: 'belastingsaart',
+        tekst: 'Hoe verloopt de belasting?',
+        opties: [
+          optie('gecontroleerd', 'Constant, gecontroleerde start/stop', null),
+          optie('hard', 'Constant, harde start/stop', null),
+          optie('variabel', 'Belasting en snelheid sterk variabel', null),
+          optie('schokken', 'Met schokken en/of trillingen', null),
+          optie('weetniet', 'Weet ik niet', 'De tool rekent met de zwaarste belastingsaart')
+        ]
+      }));
+    }
     if (tak === 'kogelomloop') vragen = vragen.concat(levensduurVragen());
     return {
       nummer: 4,
@@ -5914,6 +6143,14 @@ var WizardLogica = (function () {
   // die route (zie stappen()), of ontbrekend (sommige pure testinvoer/oudere
   // aanroepen zetten geen type) — in alle drie de gevallen geldt nog steeds
   // de kogelomloop-route van stap 2.
+  // Besluit opdrachtgever 09-10-2026 (spec 2026-10-09-trapezium-mcalc §2.4):
+  // droog bedrijf zonder zelfsmerende moer → geen advies, maar de product
+  // engineers. Het type volgt de tak van de wizard ('weet-niet' = kogelomloop).
+  function smeringOntbreekt(a) {
+    var type = a.type === 'trapezium' || a.type === 'draadspindel' ? a.type : 'kogelomloop';
+    return Rekenkern.smeringOntbreekt(type, ontbreekt(a.moermateriaal) ? 'brons' : a.moermateriaal, a.smering);
+  }
+
   function vraagtEngineering(a) {
     if (a.type !== undefined && a.type !== 'kogelomloop' && a.type !== 'weet-niet') return false;
     var nauw = a.nauwkeurigheid;
@@ -6072,6 +6309,11 @@ var WizardLogica = (function () {
       verticaal: nietHorizontaal,
       moermateriaal: ontbreekt(a.moermateriaal) ? 'brons' : a.moermateriaal,
       bedrijf: a.bedrijf === 'weetniet' ? 'regelmatig' : a.bedrijf,
+      // v1.35: onbeantwoord rekent de tool gesmeerd en met de zwaarste
+      // belastingsaart; droog zonder zelfsmerende moer stopt stap 8 al
+      // (smeringOntbreekt hieronder).
+      smering: a.smering === 'droog' ? 'droog' : 'gesmeerd',
+      belastingsaart: ontbreekt(a.belastingsaart) ? 'weetniet' : a.belastingsaart,
       // Spec 2026-10-05-levensduur-statisch-ontwerp §2/§5 (v1.20): alleen de
       // kogelomlooptak leest deze. De vier bedrijfsurenvelden gaan ongewijzigd
       // door (de configurator toont ze); vereisteUren is het product met het
@@ -6133,6 +6375,8 @@ var WizardLogica = (function () {
     moermateriaal: overgenomen('het moermateriaal'),
     bedrijf: overgenomen('het bedrijf (gebruiksintensiteit)'),
     orientatie: overgenomen('de inbouwrichting'),
+    smering: overgenomen('de smering'),
+    belastingsaart: overgenomen('de belastingsaart'),
     draadCoating: 'Afgeleid uit uw antwoord over de coating.',
     koppeling: overgenomen('de koppeling')
   };
@@ -6324,6 +6568,7 @@ var WizardLogica = (function () {
     belastingHerkomst: belastingHerkomst,
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
+    smeringOntbreekt: smeringOntbreekt,
     STAP8_MINIATUUR_TOELICHTING: STAP8_MINIATUUR_TOELICHTING,
     SIGNALEN: SIGNALEN,
     KLASSE: KLASSE,
@@ -6422,7 +6667,9 @@ var Offerte = (function () {
     // Spec 2026-10-05-levensduur-statisch-ontwerp §5 (v1.20), alleen kogelomloop.
     urenPerDag: 'Bedrijfsuren per dag', dagenPerWeek: 'Aantal dagen per week',
     wekenPerJaar: 'Aantal weken per jaar', jaren: 'Gewenste levensduur van de spindel',
-    fs: 'Statische veiligheid f_s'
+    fs: 'Statische veiligheid f_s',
+    // v1.35 (spec 2026-10-09-trapezium-mcalc §2.2/§2.4).
+    belastingsaart: 'Belastingsaart', smering: 'Smering'
   };
   var TOEPASSING_EENHEID = { krachtN: ' N', snelheidMmPerSec: ' mm/s', overspanningMm: ' mm',
     urenPerDag: ' uur/dag', dagenPerWeek: ' dag/week', wekenPerJaar: ' week/jaar', jaren: ' jaar' };
@@ -6483,6 +6730,10 @@ var Offerte = (function () {
     fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
     nauwkeurigheid: { beide: 'herhaal- en positienauwkeurigheid' },
+    belastingsaart: { gecontroleerd: 'constant, gecontroleerde start/stop (f_i 0,75)',
+      hard: 'constant, harde start/stop (f_i 0,4)', variabel: 'sterk variabel (f_i 0,3)',
+      schokken: 'schokken en/of trillingen (f_i 0,2)', weetniet: 'weet ik niet (f_i 0,2)' },
+    smering: { gesmeerd: 'gesmeerd', droog: 'droog (zonder smering)' },
     // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): met de µ waarmee de
     // tool rekent ('kogelomloop' is hier de geleiding, niet het spindeltype).
     geleiding: { kogelomloop: 'kogelomloopgeleiding (µ 0,05)', rollen: 'rollengeleiding (µ 0,1)',
@@ -6636,8 +6887,23 @@ var Offerte = (function () {
         regels.push('Knikbelasting F_k,max: ' + fmt(grenzen.FkMax, 0) + ' N (opgegeven: ' +
           fmt(grenzen.krachtN, 0) + ' N, ' + (grenzen.knikOk ? 'voldoet' : 'grens overschreden') + ')');
       }
-      regels.push('Glijsnelheid: ' + fmt(grenzen.glijsnelheid, 2) + ' m/s (grens: ' +
-        fmt(grenzen.vgMax, 2) + ' m/s, ' + (grenzen.glijsnelheidOk ? 'voldoet' : 'grens overschreden') + ')');
+      var metDruk = typeof grenzen.vlaktedruk === 'number';
+      regels.push('Glijsnelheid: ' + fmt(grenzen.glijsnelheid, 2) + ' m/s (grens' +
+        (metDruk ? ' bij deze vlaktedruk' : '') + ': ' +
+        (metDruk && grenzen.vgMax === 0 ? 'geen — de vlaktedruk is te hoog'
+          : fmt(grenzen.vgMax, metDruk ? 1 : 2) + ' m/s') + ', ' +
+        (grenzen.glijsnelheidOk ? 'voldoet' : 'grens overschreden') + ')');
+      // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35).
+      if (typeof grenzen.vlaktedruk === 'number') {
+        regels.push('Vlaktedruk moer (' + fmt(grenzen.moerlengte, 0) + ' mm): ' + fmt(grenzen.vlaktedruk, 2) +
+          ' N/mm² (toelaatbaar bij ' + fmt(grenzen.vgTabel, 1) + ' m/s: ' + fmt(grenzen.pMax, 1) +
+          ' N/mm², veiligheid ' + fmt(grenzen.veiligheidVlaktedruk, 2) + ', ' +
+          (grenzen.vlaktedrukOk ? 'voldoet' : 'grens overschreden') + ')');
+      }
+      if (typeof grenzen.edMax === 'number') {
+        regels.push('Toelaatbare inschakelduur: ' + grenzen.edMax + ' % (PV-waarde ' + fmt(grenzen.pvWaarde, 0) +
+          ' N/mm²·m/min, f_i ' + fmt(grenzen.fi, 2) + ') — ' + grenzen.edSmering);
+      }
       // Niet elke trapeziummaat staat in de BFM-draaggetaltabel (bijv.
       // Tr 48x8, zie het catalogus-blok): zonder bekend draaggetal blijft
       // deze regel weg in plaats van een onjuiste "voldoet" te suggereren.
@@ -6650,14 +6916,8 @@ var Offerte = (function () {
           fmt((grenzen.krachtN || 0) / 1000, 2) + ' kN, ' +
           (grenzen.krachtOk ? 'voldoet' : 'grens overschreden') + ')');
       }
-      if (typeof grenzen.wrijvingMelding === 'string' && grenzen.wrijvingMelding) {
-        regels.push('Wrijving: ' + grenzen.wrijvingMelding);
-      }
       var lagerT = vastlagerRegel(grenzen);
       if (lagerT) regels.push(lagerT);
-      if (typeof grenzen.inschakelduurMelding === 'string' && grenzen.inschakelduurMelding) {
-        regels.push('Inschakelduur: ' + grenzen.inschakelduurMelding);
-      }
     }
     if (grenzen.type !== 'draadspindel' && typeof grenzen.aandrijfkoppel === 'number') {
       regels.push('Aandrijfkoppel: ' + fmt(grenzen.aandrijfkoppel, 2) + ' Nm');
@@ -6938,6 +7198,8 @@ var Offerte = (function () {
       moermateriaal: antwoorden.moermateriaal,
       bedrijf: antwoorden.bedrijf,
       orientatie: antwoorden.orientatie,
+      smering: antwoorden.smering,
+      belastingsaart: antwoorden.belastingsaart,
       // Review M-3: bedrijfsuren en f_s. De wizard stelt die vragen alleen bij
       // de kogelomlooptak (type kogelomloop of weet ik niet); achtergebleven
       // antwoorden van een andere tak horen niet in de mail.
@@ -6970,11 +7232,20 @@ var Offerte = (function () {
   // Dezelfde mail (alle wizardantwoorden), met de regel "Voorgestelde maat:
   // Ø<d>×<P> met moer <moer>"; onderwerp en aanhef noemen dan miniatuur in
   // plaats van een hoge nauwkeurigheid, want daar gaat de aanvraag dan niet over.
-  function adviesaanvraagMailtoUrl(antwoorden, voorgesteld) {
-    var onderwerp = voorgesteld
+  //
+  // v1.35 (spec 2026-10-09-trapezium-mcalc §2.4): reden 'smering' bij droog
+  // bedrijf zonder zelfsmerende moer — eigen onderwerp en aanhef.
+  function adviesaanvraagMailtoUrl(antwoorden, voorgesteld, reden) {
+    var zonderSmering = reden === 'smering';
+    var onderwerp = zonderSmering
+      ? 'Adviesaanvraag spindel — zonder smering'
+      : voorgesteld
       ? 'Adviesaanvraag kogelomloopspindel — miniatuur'
       : 'Adviesaanvraag kogelomloopspindel — hoge nauwkeurigheid';
-    var regels = voorgesteld
+    var regels = zonderSmering
+      ? ['De klant geeft op dat de spindel zonder smering loopt. Zonder smering geeft de tool geen ' +
+          'advies: de product engineers van MCA bepalen samen met de klant de juiste oplossing.']
+      : voorgesteld
       ? ['De tool kwam uit op een miniatuur kogelomloopspindel. Miniatuur kogelomloopspindels ' +
           'stemmen de product engineers van MCA altijd met de klant af.',
         'Voorgestelde maat: Ø' + voorgesteld.d + '×' + String(voorgesteld.P).replace('.', ',') +
@@ -6994,8 +7265,8 @@ var Offerte = (function () {
       '&body=' + encodeURIComponent(regels.join('\n'));
   }
 
-  function verstuurAdviesaanvraag(antwoorden, voorgesteld) {
-    window.location.href = adviesaanvraagMailtoUrl(antwoorden, voorgesteld);
+  function verstuurAdviesaanvraag(antwoorden, voorgesteld, reden) {
+    window.location.href = adviesaanvraagMailtoUrl(antwoorden, voorgesteld, reden);
   }
 
   // Keuzemail bij meerdere passende typen (spec 2026-10-05-passende-typen-
@@ -7344,8 +7615,9 @@ var Afbeeldingen = (function () {
     },
     {
       naam: 'Advies.kies() — hoogst haalbare trapeziumsnelheid bij 5 kN',
-      toelichting: 'Metaal (brons), vast-los 500 mm, snelheid ver boven elke glijsnelheidsgrens gevraagd',
-      verwacht: '0,13 m/s bij Tr 16×4 — die snelheid is zelf ook haalbaar',
+      toelichting: 'Metaal (brons), vast-los 500 mm, snelheid ver boven elke glijsnelheidsgrens gevraagd; ' +
+        'grens uit de toelaatbare vlaktedruk per glijsnelheid',
+      verwacht: '0,19 m/s bij Tr 22×5 — die snelheid is zelf ook haalbaar',
       voer: function () {
         // 500 mm in plaats van 800 mm: sinds v1.24 toetst trapezium ook knik
         // (spec 2026-10-05-knik-trapezium §2) en haalt Tr 16×4 op 800 mm de
@@ -7360,11 +7632,31 @@ var Afbeeldingen = (function () {
         var afgerond = Math.floor(h.vMaxMmPerSec / 10) / 100;
         var opnieuw = Advies.kies(Object.assign({}, basis, { snelheidMmPerSec: afgerond * 1000 }));
         var zelfHaalbaar = !!opnieuw.maat && opnieuw.maat.code === h.maat.code;
-        var ok = teSnel.maat === null && h.maat.code === 'Tr 16×4' &&
-          Math.abs(afgerond - 0.13) < 0.001 && zelfHaalbaar;
+        // v1.35: de glijsnelheidsgrens volgt uit de vlaktedruk met de echte
+        // moerlengte (tabel van MCA); Tr 22×5 mag bij 5 kN tot 2,4 m/s.
+        var ok = teSnel.maat === null && h.maat.code === 'Tr 22×5' &&
+          Math.abs(afgerond - 0.19) < 0.001 && zelfHaalbaar;
         return {
           werkelijk: fmt(afgerond, 2) + ' m/s bij ' + h.maat.code +
             ', zelf haalbaar: ' + (zelfHaalbaar ? 'ja' : 'nee'),
+          ok: ok
+        };
+      }
+    },
+    {
+      // Spec 2026-10-09-trapezium-mcalc §3 (v1.35): het rekenrapport van MCA.
+      naam: 'Trapezium Tr 28×5 — rekenrapport MCA (5400 N, 0,1 m/s, vast-los 1150 mm)',
+      toelichting: 'Vlaktedruk, toelaatbare druk bij de glijsnelheid, PV-waarde, inschakelduur en kritisch toerental',
+      verwacht: 'p 2,41 · p_max 8,6 · PV 309 · ED 1 % · n_cr,max 1708 /min',
+      voer: function () {
+        var g = Rekenkern.trapeziumGeometrie(28, 5, 1);
+        var r = Rekenkern.trapeziumDrukToets(5400, 1200, g.d2, 5, 1, 56, 'brons', 'gecontroleerd');
+        var nCr = Rekenkern.kritischToerentalTrapezium(g.d2, 1150, 'vast-los').nCrMax;
+        var ok = Math.abs(r.vlaktedruk - 2.407) < 0.001 && r.pMax === 8.6 &&
+          Math.abs(r.pvWaarde - 308.6) < 0.1 && r.edMax === 1 && Math.abs(nCr - 1708) < 1;
+        return {
+          werkelijk: 'p ' + fmt(r.vlaktedruk, 2) + ' · p_max ' + fmt(r.pMax, 1) + ' · PV ' + fmt(r.pvWaarde, 0) +
+            ' · ED ' + r.edMax + ' % · n_cr,max ' + fmt(nCr, 0) + ' /min',
           ok: ok
         };
       }
@@ -7550,7 +7842,9 @@ var Afbeeldingen = (function () {
     // getalveld als 0 binnenkomen en controleer() een fout geven.
     // f_s 'onbekend' (3,0 mét aannamemelding) tot de klant iets anders kiest.
     urenPerDag: 8, dagenPerWeek: 5, wekenPerJaar: 52, jaren: 5, fs: 'onbekend',
-    orientatie: 'horizontaal'
+    orientatie: 'horizontaal',
+    // v1.35: gesmeerd en de veiligste belastingsaart tot de klant kiest.
+    belastingsaart: 'weetniet', smering: 'gesmeerd'
   };
 
   // { veldnaam: reden }, uit WizardLogica (die beslist, dit blok leest
@@ -7599,7 +7893,12 @@ var Afbeeldingen = (function () {
       onbekend: 'Onbekend (aangenomen 3,0)' },
     moermateriaal: { brons: 'Brons', kunststof: 'Kunststof' },
     bedrijf: { incidenteel: 'Incidenteel', regelmatig: 'Regelmatig', continu: 'Continu' },
-    orientatie: { horizontaal: 'Horizontaal', verticaal: 'Verticaal', hoek: 'Onder een hoek' }
+    orientatie: { horizontaal: 'Horizontaal', verticaal: 'Verticaal', hoek: 'Onder een hoek' },
+    // v1.35 (spec 2026-10-09-trapezium-mcalc §2.2/§2.4).
+    belastingsaart: { gecontroleerd: 'Constant, gecontroleerde start/stop (f_i 0,75)',
+      hard: 'Constant, harde start/stop (f_i 0,4)', variabel: 'Sterk variabel (f_i 0,3)',
+      schokken: 'Schokken en/of trillingen (f_i 0,2)', weetniet: 'Weet ik niet (f_i 0,2)' },
+    smering: { gesmeerd: 'Gesmeerd', droog: 'Droog (zonder smering)' }
   };
 
 
@@ -8306,6 +8605,21 @@ var Afbeeldingen = (function () {
   // Kritisch toerental en knikbelasting bij trapezium (spec 2026-10-05-
   // knik-trapezium §2, v1.24): dezelfde regels als bij kogelomloop, voor
   // rekenpaneel en stap 8. Alleen opmaak; controleer() rekent.
+  // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35): glijsnelheid,
+  // vlaktedruk en toelaatbare inschakelduur zoals MCAlc, voor rekenpaneel en
+  // stap 8. Alleen opmaak; controleer() rekent.
+  function voegTrapeziumDrukToe(inhoud, r) {
+    inhoud.appendChild(regelMetIcoon(
+      'Glijsnelheid: ' + fmt(r.glijsnelheid, 2) + ' m/s (grens bij deze vlaktedruk: ' +
+      (r.vgMax > 0 ? fmt(r.vgMax, 1) + ' m/s' : 'geen — de vlaktedruk is te hoog') + ')', r.glijsnelheidOk));
+    inhoud.appendChild(regelMetIcoon(
+      'Vlaktedruk moer (' + fmt(r.moerlengte, 0) + ' mm): ' + fmt(r.vlaktedruk, 2) + ' N/mm² (toelaatbaar bij ' +
+      fmt(r.vgTabel, 1) + ' m/s: ' + fmt(r.pMax, 1) + ' N/mm²; veiligheid ' + fmt(r.veiligheidVlaktedruk, 2) + ')',
+      r.vlaktedrukOk));
+    inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (PV-waarde ' + fmt(r.pvWaarde, 0) +
+      ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + ') — ' + r.edSmering));
+  }
+
   function voegTrapeziumKnikToe(inhoud, r) {
     inhoud.appendChild(regelMetIcoon(
       'Kritisch toerental n_cr,max: ' + fmt(r.nCrMax, 0) + ' /min (benodigd: ' +
@@ -8393,20 +8707,11 @@ var Afbeeldingen = (function () {
       // zichzelf niet of dat goed of slecht nieuws is.
       grenzenInhoud.appendChild(toelichting(
         Rekenkern.KLASSE_UITLEG[resultaat.zelfremklasse] || ''));
-      grenzenInhoud.appendChild(regelMetIcoon(
-        'Glijsnelheid: ' + fmt(resultaat.glijsnelheid, 2) + ' m/s (grens: ' +
-        fmt(resultaat.vgMax, 2) + ' m/s)', resultaat.glijsnelheidOk));
+      voegTrapeziumDrukToe(grenzenInhoud, resultaat);
       grenzenInhoud.appendChild(regelMetIcoon(
         'Draaggetal C dyn: ' + fmt(resultaat.draaggetalKN, 1) + ' kN (opgegeven: ' +
         fmt(resultaat.krachtN / 1000, 2) + ' kN)', resultaat.krachtOk));
-      grenzenInhoud.appendChild(regel('Benodigde moerlengte: ' + fmt(resultaat.moerlengte, 1) + ' mm'));
-      if (resultaat.wrijvingMelding) {
-        grenzenInhoud.appendChild(toelichting(resultaat.wrijvingMelding));
-      }
       voegVastlagerToe(grenzenInhoud, resultaat);
-      if (resultaat.inschakelduurMelding) {
-        grenzenInhoud.appendChild(toelichting(resultaat.inschakelduurMelding));
-      }
 
       koppelKaart.hidden = false;
       koppelInhoud.appendChild(regel('Aandrijfkoppel: ' + fmt(resultaat.aandrijfkoppel, 2) + ' Nm'));
@@ -9500,7 +9805,9 @@ var Afbeeldingen = (function () {
       inhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(o.motorvermogenKW, 3) + ' kW'));
       // Spec 2026-10-05-knik-trapezium §2 (v1.24): trapezium toont hier
       // kritisch toerental en knikbelasting in plaats van de knikmelding.
-      (o.grenstoetsen || []).forEach(function (t) { inhoud.appendChild(regelMetIcoon(t.tekst, t.ok)); });
+      (o.grenstoetsen || []).forEach(function (t) {
+        inhoud.appendChild(t.ok === null ? regel(t.tekst) : regelMetIcoon(t.tekst, t.ok));
+      });
       inhoud.appendChild(regelMetIcoon(o.kerntoets.tekst, o.kerntoets.ok));
       // Review I-2: zelfremming alleen als feit, nooit als veiligheid; de
       // typegebonden remtekst (bij niet-horizontale inbouw) als kritieke melding.
@@ -9550,6 +9857,38 @@ var Afbeeldingen = (function () {
   function wizRenderResultaat() {
     var resultaatDiv = document.createElement('div');
     resultaatDiv.className = 'wiz-resultaat';
+
+    // Besluit opdrachtgever 09-10-2026 (spec 2026-10-09-trapezium-mcalc
+    // §2.4): droog bedrijf zonder zelfsmerende moer → geen advies, meteen
+    // naar de product engineers.
+    if (WizardLogica.smeringOntbreekt(wizAntwoorden)) {
+      resultaatDiv.appendChild(wizAlert(Rekenkern.SMERING_PE_MELDING, 'kritiek'));
+      var peKaart = document.createElement('div');
+      peKaart.className = 'kaart';
+      var peKop = document.createElement('div');
+      peKop.className = 'kaart-kop';
+      peKop.textContent = 'Advies door MCA';
+      peKaart.appendChild(peKop);
+      var peInhoud = document.createElement('div');
+      peInhoud.className = 'kaart-inhoud';
+      peInhoud.appendChild(Object.assign(document.createElement('p'), {
+        textContent: 'U geeft op dat de spindel zonder smering loopt. Daarvoor adviseert de tool geen ' +
+          'spindel: de product engineers van MCA nemen contact met u op.'
+      }));
+      var peKnop = document.createElement('button');
+      peKnop.type = 'button';
+      peKnop.className = 'knop knop-offerte';
+      peKnop.id = 'wizSmeringAdvies';
+      peKnop.textContent = 'Vraag advies aan bij de product engineers';
+      peKnop.addEventListener('click', function () {
+        Offerte.verstuurAdviesaanvraag(wizAntwoorden, null, 'smering');
+      });
+      peInhoud.appendChild(peKnop);
+      peKaart.appendChild(peInhoud);
+      resultaatDiv.appendChild(peKaart);
+      wizContainer.appendChild(resultaatDiv);
+      return;
+    }
 
     var cfg;
     try {
@@ -9759,10 +10098,7 @@ var Afbeeldingen = (function () {
           grenzenInhoud.appendChild(regel('Spoedhoek: ' + fmt(check.phi, 2) + '°'));
           grenzenInhoud.appendChild(regel('Zelfremklasse: ' + check.zelfremklasse));
           grenzenInhoud.appendChild(toelichting(Rekenkern.KLASSE_UITLEG[check.zelfremklasse] || ''));
-          if (check.wrijvingMelding) grenzenInhoud.appendChild(toelichting(check.wrijvingMelding));
-          grenzenInhoud.appendChild(regelMetIcoon(
-            'Glijsnelheid: ' + fmt(check.glijsnelheid, 2) + ' m/s (grens: ' +
-            fmt(check.vgMax, 2) + ' m/s)', check.glijsnelheidOk));
+          voegTrapeziumDrukToe(grenzenInhoud, check);
           grenzenInhoud.appendChild(regelMetIcoon(
             'Draaggetal C dyn: ' + fmt(check.draaggetalKN, 1) + ' kN (opgegeven: ' +
             fmt(check.krachtN / 1000, 2) + ' kN)', check.krachtOk));
