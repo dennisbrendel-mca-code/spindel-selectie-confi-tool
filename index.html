@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.34  09-10-2026  d·n-grens voor alle moeren met smeeradvies, axiale toets vastlager, inschakelduur trapezium, last uit geleiding en versnelling
   1.33  09-10-2026  FB-001: toelichting bij bedrijf 'Regelmatig' aangepast
   1.32  09-10-2026  Feedbackmail met soort en technische gegevens om meldingen na te spelen
   1.31  09-10-2026  Renders bij type spindel, toebehoren, passende typen, moer, lagerunits en koppeling
@@ -385,7 +386,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.33 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.34 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -672,9 +673,12 @@ var Catalogus = (function () {
   // levensduur-statisch-ontwerp §4.2, v1.20). FSCR: spoed 5 en 10 → 70.000,
   // spoed 20 → 100.000, en de 16×10 (een eigen uitvoering in die tabel) ook
   // 100.000. FSCL, FDCR, RSKR en RSCR: 70.000. SFYR: 100.000 (v1.25, p.10 van
-  // de technische informatie van de fabrikant). SDK, SDH en MBS (multi-brand,
-  // geen eenduidige bron) hebben geen grens: die worden niet getoetst (null).
-  var DN_GRENS_VAST = { FSCL: 70000, FDCR: 70000, RSKR: 70000, RSCR: 70000, SFYR: 100000 };
+  // de technische informatie van de fabrikant). SDK, SDH en MBS hebben geen
+  // eigen leveranciersgrens; sinds v1.34 (spec 2026-10-09-dn-lager-geleiding
+  // §2.1, besluit opdrachtgever) geldt voor die drie de algemene grens bij
+  // vetsmering uit de interne handleiding: n_max = 60.000 / d0.
+  var DN_GRENS_VAST = { FSCL: 70000, FDCR: 70000, RSKR: 70000, RSCR: 70000, SFYR: 100000,
+    SDK: 60000, SDH: 60000, MBS: 60000 };
 
   function moerDnGrens(code, d, P) {
     // Alleen voor een moer die bij d×P ook echt bestaat.
@@ -850,6 +854,34 @@ var Catalogus = (function () {
     var indeling = LAGERUNIT_INDELING[code];
     if (!indeling) throw new Error('onbekende lagerunit: ' + code);
     return indeling[d] === undefined ? null : indeling[d];
+  }
+
+  // Toelaatbare axiale belasting van de VASTE lagerunit in kN (spec
+  // 2026-10-09-dn-lager-geleiding §2.2, v1.34). FKN/BKN: MCA-catalogus p.24
+  // en p.26, kolom "C dyn = dynamisch toegestane axiale belasting incl.
+  // veiligheidsfactor S0 = 2,5" (besluit opdrachtgever: MCA-catalogus
+  // aanhouden). WBK staat niet in de MCA-catalogus: leverancierstabel
+  // WBK-lagerunits, toelaatbare axiale last = 0,7 × de grenswaarde (noot 7).
+  // DFD draagt de hogere waarde maar in één richting; in de andere richting
+  // geldt die van DF, en die houdt de tool aan. FFN/BFN (los) dragen geen
+  // axiale last en hebben hier geen waarde.
+  var LAGERUNIT_AXIAAL_KN = {
+    FKN: { 6: 0.7, 8: 1.0, 10: 2.0, 12: 2.4, 15: 2.9, 17: 4.1, 20: 8.3, 25: 9.7, 30: 14.2 },
+    BKN: { 8: 1.0, 10: 2.0, 12: 2.4, 15: 2.9, 17: 4.1, 20: 5.8, 25: 9.7, 30: 14.2, 40: 18.0 },
+    WBK: {
+      25: { DF: 28.35, DFD: 28.35 },
+      30: { DF: 30.1, DFD: 30.1 },
+      35: { DF: 35.0, DFD: 35.0, DFF: 70.0 },
+      40: { DF: 36.4, DFD: 36.4, DFF: 72.8 }
+    }
+  };
+
+  function lagerunitAxiaalKN(code, maat, uitvoering) {
+    var tabel = LAGERUNIT_AXIAAL_KN[code];
+    if (!tabel || tabel[maat] === undefined) return null;
+    if (code !== 'WBK') return tabel[maat];
+    var w = tabel[maat][uitvoering];
+    return w === undefined ? null : w;
   }
 
   // MCA-catalogus p.29 (FKN/BKN) en p.30 (FFN/BFN): astapbewerking per
@@ -1362,6 +1394,7 @@ var Catalogus = (function () {
     },
     lagerunits: lagerunits,
     lagerunitMaat: lagerunitMaat,
+    lagerunitAxiaalKN: lagerunitAxiaalKN,
     astapMaten: astapMaten,
     lagerblokMaten: lagerblokMaten,
     wbkUitvoeringen: wbkUitvoeringen,
@@ -2299,6 +2332,31 @@ var ConfiguratorLogica = (function () {
     return { vereisteUren: uren.uren, bedrijfsuren: uren, fs: veiligheid.fs, veiligheid: veiligheid };
   }
 
+  // Spec 2026-10-09-dn-lager-geleiding §2.2 (v1.34): de opgegeven kracht
+  // tegen de toelaatbare axiale belasting van elke VASTE lagerunit (FKN, BKN,
+  // WBK) op LZ1/LZ2. De zwakste telt. Een kale code ('BKN') krijgt zijn
+  // bouwgrootte uit de diameter, net als in normaliseer(). Geen vaste unit,
+  // of geen bekende waarde: null (geen toets, geen regel).
+  function vastlagerToets(cfg, krachtN) {
+    var zwakste = null;
+    [cfg.astap1, cfg.astap2].forEach(function (waarde) {
+      var p = Catalogus.parseLagerunit(waarde);
+      if (!p || (p.code !== 'FKN' && p.code !== 'BKN' && p.code !== 'WBK')) return;
+      var maat = p.maat !== null ? p.maat : Catalogus.lagerunitMaat(p.code, cfg.d);
+      if (maat === null) return;
+      var grens = Catalogus.lagerunitAxiaalKN(p.code, maat, p.uitvoering);
+      if (grens === null) return;
+      if (zwakste === null || grens < zwakste.grensKN) {
+        zwakste = {
+          unit: p.code + String(maat).padStart(2, '0') + (p.uitvoering || ''),
+          grensKN: grens
+        };
+      }
+    });
+    if (zwakste) zwakste.ok = krachtN <= zwakste.grensKN * 1000;
+    return zwakste;
+  }
+
   function controleer(cfg, belasting) {
     if (!cfg || typeof cfg !== 'object') {
       throw new Error('cfg ontbreekt of is geen object, kreeg ' + cfg);
@@ -2378,6 +2436,9 @@ var ConfiguratorLogica = (function () {
       uitK.dn = cfg.d * n;
       uitK.dnGrens = Catalogus.moerDnGrens(cfg.moertype, cfg.d, cfg.P);
       uitK.dnOk = uitK.dnGrens === null || uitK.dn <= uitK.dnGrens;
+      // Spec 2026-10-09-dn-lager-geleiding §2.1/§2.2 (v1.34).
+      uitK.smeermiddel = Rekenkern.smeeradvies(uitK.dn);
+      uitK.vastlager = vastlagerToets(cfg, belasting.krachtN);
       return uitK;
     }
 
@@ -2456,6 +2517,9 @@ var ConfiguratorLogica = (function () {
         krachtN: belasting.krachtN,
         draaggetalKN: maat.cDynBFM,
         krachtOk: Rekenkern.draaggetalOk(belasting.krachtN, maat.cDynBFM),
+        // Spec 2026-10-09-dn-lager-geleiding §2.2/§2.3 (v1.34).
+        vastlager: vastlagerToets(cfg, belasting.krachtN),
+        inschakelduurMelding: Rekenkern.inschakelduurMelding(belasting.bedrijf),
         eta: etaT,
         aandrijfkoppel: koppelT,
         losbreekkoppel: losbreek,
@@ -2873,6 +2937,47 @@ var Rekenkern = (function () {
     }
   }
 
+  // ── v1.34: smeeradvies, last uit gewicht en geleiding, inschakelduur ────
+  // Spec 2026-10-09-dn-lager-geleiding §2.1: smeeradvies uit d·n (d0 × n),
+  // zoals het eigen rekenprogramma van MCA het geeft — tot 60.000 vet, daarboven
+  // olie (interne handleiding: vetsmering K < ≈ 60.000).
+  var SMEER_DN_VET = 60000;
+  function smeeradvies(dn) {
+    positiefGetal(dn, 'dn');
+    return dn <= SMEER_DN_VET ? 'vet' : 'olie';
+  }
+
+  // Spec §2.4: wrijvingscoëfficiënt van de geleiding (opgave opdrachtgever
+  // 09-10-2026), steeds de bovengrens van de band — de veilige kant. Zonder
+  // antwoord of bij "weet ik niet" de hoogste waarde.
+  var GELEIDING_MU = { kogelomloop: 0.05, rollen: 0.1, combirollen: 0.1, glijlager: 0.3, weetniet: 0.3 };
+  var ZWAARTEKRACHT = 9.81;
+
+  // Axiale kracht uit massa, inbouw, geleiding en versnelling (interne
+  // handleiding §4): horizontaal F = µ·m·g + m·a, anders F = m·g + m·a.
+  // versnelling leeg (undefined/null) → a = g, net zo zwaar als de oude
+  // vuistregel 2·m·g bij verticale inbouw.
+  function axialeKrachtUitGewicht(massaKg, nietHorizontaal, geleiding, versnelling) {
+    positiefGetal(massaKg, 'massaKg');
+    var a = (versnelling === undefined || versnelling === null) ? ZWAARTEKRACHT : versnelling;
+    if (typeof a !== 'number' || !Number.isFinite(a) || a < 0) {
+      throw new Error('versnelling moet 0 of groter zijn, kreeg ' + versnelling);
+    }
+    var mu = GELEIDING_MU[geleiding] === undefined ? GELEIDING_MU.weetniet : GELEIDING_MU[geleiding];
+    var gewichtsdeel = nietHorizontaal ? massaKg * ZWAARTEKRACHT : mu * massaKg * ZWAARTEKRACHT;
+    return gewichtsdeel + massaKg * a;
+  }
+
+  // Spec §2.3: trapezium is volgens de interne handleiding geschikt voor een
+  // inschakelduur tot circa 10 % per 6 minuten. Melding bij regelmatig en
+  // continu bedrijf, niet bij incidenteel.
+  var INSCHAKELDUUR_MELDING_TRAPEZIUM =
+    'Een trapeziumspindel is geschikt voor een inschakelduur tot circa 10 % (per 6 minuten). ' +
+    'Is die hoger, dan adviseren wij een kogelomloopspindel.';
+  function inschakelduurMelding(bedrijf) {
+    return (bedrijf === 'regelmatig' || bedrijf === 'continu') ? INSCHAKELDUUR_MELDING_TRAPEZIUM : null;
+  }
+
   // Belastingsfactor f_w (MCA p.40): steeds de BOVENKANT van de band bij de
   // gevraagde snelheid (spec §2.3): v < 0,25 m/s → 1,2 · 0,25–1,0 m/s → 1,5 ·
   // 1,0–2,0 m/s → 2,0 · > 2,0 m/s → 3,5. Op precies 1,0 m/s overlappen de
@@ -3107,7 +3212,13 @@ var Rekenkern = (function () {
     pvFactor: pvFactor,
     zelfremmingDraadspindel: zelfremmingDraadspindel,
     draadspindelToets: draadspindelToets,
-    DS_INDICATIEF_MELDING: DS_INDICATIEF_MELDING
+    DS_INDICATIEF_MELDING: DS_INDICATIEF_MELDING,
+    SMEER_DN_VET: SMEER_DN_VET,
+    smeeradvies: smeeradvies,
+    GELEIDING_MU: GELEIDING_MU,
+    axialeKrachtUitGewicht: axialeKrachtUitGewicht,
+    INSCHAKELDUUR_MELDING_TRAPEZIUM: INSCHAKELDUUR_MELDING_TRAPEZIUM,
+    inschakelduurMelding: inschakelduurMelding
   };
 })();
 </script>
@@ -3766,6 +3877,11 @@ var Advies = (function () {
                berekend.glijsnelheid.toFixed(2) + ' m/s. Dat geeft wrijvingswarmte en ' +
                'versnelde slijtage van de moer. Overweeg een kogelomloopspindel.'
       });
+    }
+
+    // Spec 2026-10-09-dn-lager-geleiding §2.3 (v1.34).
+    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurMelding(invoer.bedrijf)) {
+      waarschuwingen.push({ ernst: 'info', tekst: Rekenkern.inschakelduurMelding(invoer.bedrijf) });
     }
 
     var uit = { maat: gekozen, berekend: berekend, waarschuwingen: waarschuwingen };
@@ -5411,12 +5527,36 @@ var WizardLogica = (function () {
         eenheid: 'kg',
         hint: 'Laat leeg als u dit nog niet weet — MCA denkt graag mee.'
       }),
+      // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): geleiding en
+      // versnelling bepalen samen met het gewicht de axiale kracht
+      // (Rekenkern.axialeKrachtUitGewicht), tenzij die hieronder is opgegeven.
+      vraag({
+        sleutel: 'geleiding',
+        tekst: 'Type geleiding',
+        verplicht: false,
+        hint: 'De wrijving van de geleiding telt mee in de kracht bij horizontale inbouw.',
+        opties: [
+          optie('kogelomloop', 'Kogelomloopgeleiding (profielrail)', 'µ 0,03–0,05; gerekend met 0,05'),
+          optie('rollen', 'Rollengeleiding', 'µ 0,03–0,1; gerekend met 0,1'),
+          optie('combirollen', 'Combirollen', 'µ 0,1'),
+          optie('glijlager', 'Glijlagergeleiding', 'µ 0,3'),
+          optie('weetniet', 'Weet ik niet', 'Gerekend met µ 0,3')
+        ]
+      }),
+      vraag({
+        sleutel: 'versnelling',
+        tekst: 'Versnelling (m/s², optioneel)',
+        type: 'getal',
+        eenheid: 'm/s²',
+        min: 0,
+        hint: 'Laat leeg als u dit niet weet — dan rekent de tool met 9,81 m/s².'
+      }),
       vraag({
         sleutel: 'kracht',
         tekst: 'Gewenste axiale kracht/belasting (N, optioneel)',
         type: 'getal',
         eenheid: 'N',
-        hint: 'Onbekend? Laat MCA dit berekenen op basis van gewicht en versnelling.'
+        hint: 'Onbekend? Laat leeg: de tool rekent dan met het gewicht, de geleiding en de versnelling.'
       }),
       // Samengestelde vraag: een exact getal (mm/s) is de primaire invoer;
       // de categorieën ernaast zijn een snelkeuze voor wie het getal niet
@@ -5877,9 +6017,6 @@ var WizardLogica = (function () {
   }
 
   function naarAdviesInvoer(a, type) {
-    var kracht = ontbreekt(a.kracht)
-      ? (ontbreekt(a.gewicht) ? undefined : a.gewicht * 9.81 * 2)
-      : a.kracht;
     // Elke niet-horizontale inbouw krijgt de remvlag — 'hoek' hoort daar
     // evengoed bij als 'verticaal' (bronnenonderzoek §5.3: "Een rem is
     // verplicht bij elke niet-horizontale inbouw"), en 'weetniet' valt
@@ -5887,6 +6024,22 @@ var WizardLogica = (function () {
     // (undefined) blijft horizontaal: dan is er domweg nog niets gezegd.
     var nietHorizontaal = a.orientatie === 'verticaal' || a.orientatie === 'hoek' ||
       a.orientatie === 'weetniet';
+    // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): zonder opgegeven
+    // kracht volgt hij uit gewicht, geleiding en versnelling. Alleen een
+    // uitdrukkelijk horizontale inbouw rekent met de geleidingswrijving; ook
+    // een nog onbeantwoorde inbouwvraag telt hier als de zware kant (m·g),
+    // anders zou een wizard die nog bij stap 4 is een te lichte last tonen.
+    // Een lege of onbruikbare versnelling (negatief, geen getal) telt als
+    // leeg: dan a = g, de zware kant.
+    var versnelling = typeof a.versnelling === 'number' && Number.isFinite(a.versnelling) &&
+      a.versnelling >= 0 ? a.versnelling : undefined;
+    var kracht = ontbreekt(a.kracht)
+      ? (ontbreekt(a.gewicht) ? undefined
+        // Een gewicht van 0 of minder geeft kracht 0, zodat Advies.kies() de
+        // gebruikelijke leesbare fout over de kracht werpt (zoals vóór v1.34).
+        : (a.gewicht > 0 ? Rekenkern.axialeKrachtUitGewicht(
+            a.gewicht, a.orientatie !== 'horizontaal', a.geleiding, versnelling) : 0))
+      : a.kracht;
     // De vier bedrijfsurenvelden gaan altijd door, een leeg veld als
     // undefined (ruling reviewronde 1, 05-10-2026): leeg betekent overal
     // "minimaal 10.000 u", dus ook in de configurator mag een leeg veld niet
@@ -5973,7 +6126,7 @@ var WizardLogica = (function () {
     astap1: R_LAGERBLOK, astap2: R_LAGERBLOK,
     voorspanning: R_NAUWKEURIG, klasse: R_NAUWKEURIG,
     materiaal: R_OMGEVING, materiaalMoer: R_OMGEVING, materiaalSpindel: R_OMGEVING,
-    krachtN: 'Overgenomen uit uw antwoord (of berekend uit het opgegeven gewicht).',
+    krachtN: 'Overgenomen uit uw antwoord, of berekend uit gewicht, geleiding en versnelling.',
     snelheidMmPerSec: overgenomen('de gevraagde snelheid'),
     overspanningMm: 'Overgenomen uit uw antwoord over de overspanning of de slag (de grootste van de twee).',
     lagering: overgenomen('de lagerconfiguratie'),
@@ -6287,7 +6440,9 @@ var Offerte = (function () {
     // dit (zie WizardLogica.stap6); het ui-blok (wizStartConfigurator) laat
     // een achtergebleven antwoord bij de andere takken weg.
     aandrijfzijde: 'Aandrijfzijde',
-    temperatuur: 'Werktemperatuur', coating: 'Coating'
+    temperatuur: 'Werktemperatuur', coating: 'Coating',
+    // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34).
+    geleiding: 'Type geleiding', versnelling: 'Versnelling'
   };
   var VOORSELECTIE_WAARDEN = {
     ja: 'ja', nee: 'nee', weetniet: 'weet ik niet', geen: 'geen',
@@ -6328,6 +6483,11 @@ var Offerte = (function () {
     fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
     nauwkeurigheid: { beide: 'herhaal- en positienauwkeurigheid' },
+    // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): met de µ waarmee de
+    // tool rekent ('kogelomloop' is hier de geleiding, niet het spindeltype).
+    geleiding: { kogelomloop: 'kogelomloopgeleiding (µ 0,05)', rollen: 'rollengeleiding (µ 0,1)',
+      combirollen: 'combirollen (µ 0,1)', glijlager: 'glijlagergeleiding (µ 0,3)',
+      weetniet: 'weet ik niet (µ 0,3)' },
     tolerantie: { gemiddeld: 'gemiddeld (0,05 – 0,2 mm)' }
   };
 
@@ -6377,7 +6537,19 @@ var Offerte = (function () {
     if (typeof g.dnGrens === 'number') {
       regels.push('d·n: ' + fmtDuizend(g.dn) + ' (grens ' + fmtDuizend(g.dnGrens) + ', ' + oordeel(g.dnOk) + ')');
     }
+    // Spec 2026-10-09-dn-lager-geleiding §2.1/§2.2 (v1.34).
+    if (g.smeermiddel) regels.push('Smeeradvies: ' + g.smeermiddel);
+    var lager = vastlagerRegel(g);
+    if (lager) regels.push(lager);
     return regels;
+  }
+
+  // Spec 2026-10-09-dn-lager-geleiding §2.2 (v1.34): kogelomloop en trapezium.
+  function vastlagerRegel(g) {
+    if (!g.vastlager) return null;
+    return 'Vastlager ' + g.vastlager.unit + ': toelaatbare axiale belasting ' +
+      fmt(g.vastlager.grensKN, 1) + ' kN (opgegeven: ' + fmt(g.krachtN / 1000, 2) + ' kN, ' +
+      (g.vastlager.ok ? 'voldoet' : 'grens overschreden') + ')';
   }
 
   // Afgeleide TOEPASSING-regels bij kogelomloop: de vereiste bedrijfsuren (met
@@ -6480,6 +6652,11 @@ var Offerte = (function () {
       }
       if (typeof grenzen.wrijvingMelding === 'string' && grenzen.wrijvingMelding) {
         regels.push('Wrijving: ' + grenzen.wrijvingMelding);
+      }
+      var lagerT = vastlagerRegel(grenzen);
+      if (lagerT) regels.push(lagerT);
+      if (typeof grenzen.inschakelduurMelding === 'string' && grenzen.inschakelduurMelding) {
+        regels.push('Inschakelduur: ' + grenzen.inschakelduurMelding);
       }
     }
     if (grenzen.type !== 'draadspindel' && typeof grenzen.aandrijfkoppel === 'number') {
@@ -6590,7 +6767,10 @@ var Offerte = (function () {
       toepassingRegels = toepassingRegels.concat(toepassingExtra);
     }
     toepassingRegels.forEach(function (r) { regels.push(r); });
-    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, cfg.voorselectie, null, VOORSELECTIE_WAARDEN)
+    // v1.34: alleen de versnelling krijgt hier een eenheid; zonder 'm/s²' is
+    // het kale getal niet te lezen.
+    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, cfg.voorselectie, { versnelling: ' m/s²' },
+      VOORSELECTIE_WAARDEN)
       .forEach(function (r) { regels.push(r); });
 
     var grenzenSectie = grenzenSectieRegels(cfg.grenzen);
@@ -6775,7 +6955,7 @@ var Offerte = (function () {
   // eenhedenkaart mee. Voor de adviesaanvraag, die de enige Sales-leesbare
   // weergave van deze twee velden is (er is nog geen cfg om ze elders te
   // tonen), wel.
-  var VOORSELECTIE_EENHEID_ADVIES = { gewicht: ' kg', slag: ' mm' };
+  var VOORSELECTIE_EENHEID_ADVIES = { gewicht: ' kg', slag: ' mm', versnelling: ' m/s²' };
 
   // Adviesaanvraag bij hoge nauwkeurigheid (spec 2026-10-01-fscr-fscl-en-
   // precisie-ontwerp §3): stap 8 toont bij WizardLogica.vraagtEngineering()
@@ -8028,7 +8208,21 @@ var Afbeeldingen = (function () {
       container.appendChild(regelMetIcoon(
         'd·n: ' + fmtDuizend(r.dn) + ' (grens ' + fmtDuizend(r.dnGrens) + ')', r.dnOk));
     }
+    // Spec 2026-10-09-dn-lager-geleiding §2.1/§2.2 (v1.34).
+    if (r.smeermiddel) container.appendChild(regel('Smeeradvies: ' + r.smeermiddel));
+    voegVastlagerToe(container, r);
     if (r.fsMelding) container.appendChild(toelichting(r.fsMelding));
+  }
+
+  // Spec 2026-10-09-dn-lager-geleiding §2.2 (v1.34): kogelomloop en trapezium,
+  // rekenpaneel en stap 8. Alleen als er een vaste lagerunit met bekende
+  // waarde is (controleer() geeft anders null).
+  function voegVastlagerToe(container, r) {
+    if (!r.vastlager) return;
+    container.appendChild(regelMetIcoon(
+      'Vastlager ' + r.vastlager.unit + ': toelaatbare axiale belasting ' +
+      fmt(r.vastlager.grensKN, 1) + ' kN (opgegeven: ' + fmt(r.krachtN / 1000, 2) + ' kN)',
+      r.vastlager.ok));
   }
 
   function toonAlgemeneFout(bericht) {
@@ -8208,6 +8402,10 @@ var Afbeeldingen = (function () {
       grenzenInhoud.appendChild(regel('Benodigde moerlengte: ' + fmt(resultaat.moerlengte, 1) + ' mm'));
       if (resultaat.wrijvingMelding) {
         grenzenInhoud.appendChild(toelichting(resultaat.wrijvingMelding));
+      }
+      voegVastlagerToe(grenzenInhoud, resultaat);
+      if (resultaat.inschakelduurMelding) {
+        grenzenInhoud.appendChild(toelichting(resultaat.inschakelduurMelding));
       }
 
       koppelKaart.hidden = false;
@@ -9568,6 +9766,8 @@ var Afbeeldingen = (function () {
           grenzenInhoud.appendChild(regelMetIcoon(
             'Draaggetal C dyn: ' + fmt(check.draaggetalKN, 1) + ' kN (opgegeven: ' +
             fmt(check.krachtN / 1000, 2) + ' kN)', check.krachtOk));
+          // De inschakelduurmelding staat al bij het advies (Advies.kies).
+          voegVastlagerToe(grenzenInhoud, check);
         }
         grenzenInhoud.appendChild(regel('Aandrijfkoppel: ' + fmt(check.aandrijfkoppel, 2) + ' Nm'));
         grenzenInhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(check.motorvermogenAanbevolen, 3) +
