@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.30  09-10-2026  Interne verwijzingen (openstaande punten, bronnamen) uit zichtbare teksten en zelftest
   1.29  05-10-2026  Miniatuur kogelomloop weer in het advies, met doorverwijzing naar de product engineers
   1.28  05-10-2026  Rem bij niet-zelfremming als nadrukkelijk advies (klant beslist); dubbel waarschuwingsteken weg
   1.27  05-10-2026  Geen merk- of bronnamen meer in advies- en remteksten
@@ -374,7 +375,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.29 · 05-10-2026</div>
+    <div class="versie" id="toolVersie">v1.30 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2696,7 +2697,7 @@ var Rekenkern = (function () {
     'De moer is in RVS gekozen. Alle wrijvingswaarden in deze doorrekening — rendement, ' +
     'aandrijfkoppel, losbreekkoppel en zelfremklasse — komen uit de wrijvingstabel voor staal ' +
     'op brons (CuSn7ZnPb); voor RVS op staal zijn geen wrijvingsgegevens beschikbaar. Die ' +
-    'uitkomsten zijn voor een RVS-moer indicatief — openstaand punt 21.';
+    'uitkomsten zijn voor een RVS-moer indicatief.';
 
   // KAMMERER p.132: 10 N/mm2 algemeen. NEFF hanteert voor bewegingsaandrijvingen
   // 5 N/mm2. De tool rekent standaard met de conservatieve waarde; MCA moet
@@ -6842,7 +6843,7 @@ var Offerte = (function () {
   var TOETSEN = [
     {
       naam: "Rekenkern.kritischToerental(56.9, 2700, 'vast-los')",
-      toelichting: 'Kugelberger V3.4 p.35 — uitgewerkt voorbeeld',
+      toelichting: 'MCA-catalogus kogelomloop p.35 — uitgewerkt voorbeeld',
       verwacht: 'nCr 1467 · nCrMax 1174',
       voer: function () {
         var r = Rekenkern.kritischToerental(56.9, 2700, 'vast-los');
@@ -6852,7 +6853,7 @@ var Offerte = (function () {
     },
     {
       naam: "Rekenkern.knik(56.9, 2700, 'vast-los')",
-      toelichting: 'Kugelberger V3.4 p.34 — uitgewerkt voorbeeld',
+      toelichting: 'MCA-catalogus kogelomloop p.34 — uitgewerkt voorbeeld',
       verwacht: 'Fk 295 kN · FkMax 147,5 kN',
       voer: function () {
         var r = Rekenkern.knik(56.9, 2700, 'vast-los');
@@ -6877,7 +6878,7 @@ var Offerte = (function () {
     },
     {
       naam: 'rendement Tr 20×4 bij MU.koppel',
-      toelichting: 'KAMMERER p.133/p.38 — enkelgangige trapeziumband 0,3–0,4',
+      toelichting: 'Wrijvingstabel trapezium — enkelgangige band 0,3–0,4',
       verwacht: '0,360',
       voer: function () {
         var rho = Rekenkern.wrijvingshoek(Rekenkern.MU.koppel);
@@ -6887,7 +6888,7 @@ var Offerte = (function () {
     },
     {
       naam: 'rendement Tr 24×5 bij MU.koppel',
-      toelichting: 'KAMMERER p.133/p.38 — enkelgangige trapeziumband 0,3–0,4',
+      toelichting: 'Wrijvingstabel trapezium — enkelgangige band 0,3–0,4',
       verwacht: '0,370',
       voer: function () {
         var rho = Rekenkern.wrijvingshoek(Rekenkern.MU.koppel);
@@ -6897,7 +6898,7 @@ var Offerte = (function () {
     },
     {
       naam: 'rendement Tr 40×7 bij MU.koppel',
-      toelichting: 'KAMMERER p.133/p.38 — enkelgangige trapeziumband 0,3–0,4',
+      toelichting: 'Wrijvingstabel trapezium — enkelgangige band 0,3–0,4',
       verwacht: '0,327',
       voer: function () {
         var rho = Rekenkern.wrijvingshoek(Rekenkern.MU.koppel);
@@ -6907,7 +6908,7 @@ var Offerte = (function () {
     },
     {
       naam: 'rendement Tr 20×8 tweegangig',
-      toelichting: 'KAMMERER p.133/p.38 — dubbelgangige trapeziumband 0,5–0,6 (profielspoed 4, gang 8)',
+      toelichting: 'Wrijvingstabel trapezium — dubbelgangige band 0,5–0,6 (profielspoed 4, gang 8)',
       verwacht: '0,523',
       voer: function () {
         var rho = Rekenkern.wrijvingshoek(Rekenkern.MU.koppel);
@@ -6917,7 +6918,7 @@ var Offerte = (function () {
     },
     {
       naam: 'zelfremklasse Tr 20×4',
-      toelichting: 'IFA BIA 6035 / NEFF·GROB·ZIMM-drempels, phi 4,05°',
+      toelichting: 'IFA BIA 6035 en de drempels uit de trapeziumcatalogi, phi 4,05°',
       verwacht: 'statisch, geen remfunctie',
       voer: function () {
         var g = Rekenkern.trapeziumGeometrie(20, 4, 1);
@@ -6955,7 +6956,7 @@ var Offerte = (function () {
     },
     {
       naam: 'Bestelcode.bouw — trapeziumvoorbeeld',
-      toelichting: 'Kugelberger V3.4 p.14 — uitgewerkt voorbeeld',
+      toelichting: 'MCA-catalogus kogelomloop p.14 — uitgewerkt voorbeeld',
       verwacht: 'BFM 20x4 A 1500 BKN15 BFN15 B',
       voer: function () {
         var r = Bestelcode.bouw({
@@ -6986,7 +6987,7 @@ var Offerte = (function () {
     },
     {
       naam: 'Tr 48×8 — draaggetal ontbreekt in de BFM-tabel',
-      toelichting: 'ConfiguratorLogica.controleer() mag dit nooit stil goedkeuren (openstaand punt 18)',
+      toelichting: 'ConfiguratorLogica.controleer() mag dit nooit stil goedkeuren',
       verwacht: 'expliciete foutmelding ("nog niet doorgerekend"/"draaggetal"), geen stille goedkeuring',
       voer: function () {
         var maat = maatUitCatalogus('trapezium', 'Tr 48×8');
@@ -7062,8 +7063,8 @@ var Offerte = (function () {
     },
     {
       naam: 'zelfremklasse met een kunststofmoer — nooit zelfremmend, bij welke maat dan ook',
-      toelichting: 'Onderzoek/2026-09-10-zelfremming-trapeziumspindels.md §5.1/§5.2: Ganter en ' +
-        'Mädler/ZIMM melden allebei letterlijk "mit Ausnahme der Kunststoffmutter"',
+      toelichting: 'Onderzoek zelfremming §5.1/§5.2: de trapeziumcatalogi zonderen de ' +
+        'kunststofmoer uitdrukkelijk uit',
       verwacht: 'geen bij Tr 20×4 én bij Tr 70×10, ook al is dat laatste met brons juist niet "geen"',
       voer: function () {
         var m1 = maatUitCatalogus('trapezium', 'Tr 20×4');
@@ -7163,8 +7164,8 @@ var Offerte = (function () {
   view.id = 'zelftestView';
   view.innerHTML =
     '<h1 class="zelftest-kop">Zelftest — MCA Spindel Tool</h1>' +
-    '<p class="zelftest-toelichting">Elke rij is een uitgewerkt voorbeeld uit de MCA Kugelberger- of ' +
-    'KAMMERER-catalogus, of een eerder in de spec vastgelegde uitkomst. Een rode rij betekent dat de ' +
+    '<p class="zelftest-toelichting">Elke rij is een uitgewerkt voorbeeld uit de MCA-catalogus of ' +
+    'een trapeziumcatalogus, of een eerder in de spec vastgelegde uitkomst. Een rode rij betekent dat de ' +
     'tool afwijkt van de catalogus — niet dat deze toets verouderd is.</p>' +
     '<div class="zelftest-tabel-wrap"><table class="zelftest-tabel" id="zelftestTabel">' +
     '<thead><tr><th>Toets</th><th>Verwacht</th><th>Werkelijk</th><th>Resultaat</th></tr></thead>' +
