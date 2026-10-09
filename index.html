@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.36  09-10-2026  Kritisch toerental trapezium met de lagerfactor f_kb volgens de catalogus (ook vast-los en vast-vast)
   1.35  09-10-2026  Trapezium zoals het rekenprogramma van MCA: vlaktedruk per glijsnelheid, inschakelduur uit PV, kritisch toerental, wrijving per moer; belastingsaart en smering (droog → product engineers)
   1.34  09-10-2026  d·n-grens voor alle moeren met smeeradvies, axiale toets vastlager, inschakelduur trapezium, last uit geleiding en versnelling
   1.33  09-10-2026  FB-001: toelichting bij bedrijf 'Regelmatig' aangepast
@@ -387,7 +388,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.35 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.36 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2687,15 +2688,16 @@ var Rekenkern = (function () {
     return { nCr: nCr, nCrMax: 0.8 * nCr };
   }
 
-  // Kritisch toerental TRAPEZIUM (v1.35, spec 2026-10-09-trapezium-mcalc
-  // §2.5; Onderzoek/2026-10-09-kritisch-toerental-trapezium.md): zoals het
-  // rekenprogramma van MCA, de gewichtsformule uit de trapeziumcatalogus
+  // Kritisch toerental TRAPEZIUM (v1.35/v1.36, spec 2026-10-09-trapezium-
+  // mcalc §2.5; Onderzoek/2026-10-09-kritisch-toerental-trapezium.md): de
+  // gewichtsformule uit de trapeziumcatalogus [12]
   // (n_kr = 30/π · √(21·10⁴·d2⁴·10⁴ / (0,013·F·la³·20)), F = gewicht van de
-  // vrije lengte bij Ø d2 en 7,8 kg/dm³). Omgewerkt: n_kr = 1,107·10⁸ · d2 / la².
-  // MCAlc past de lagerfactor f_kb (0,32 / 1,0 / 1,55 / 2,24) niet toe; de tool
-  // volgt dat, maar laat de factor wél gelden waar hij onder 1 ligt
-  // (vast-vrij), zodat de tool nooit hoger uitkomt dan de catalogus.
-  // Tr 28×5, la 1150 mm: 0,8 · 2134,6 = 1707,7 /min (MCAlc: 1708).
+  // vrije lengte bij Ø d2 en 7,8 kg/dm³), omgewerkt n_kr = 1,107·10⁸ · d2 / la²,
+  // en de toelaatbare n_zul = 0,8 · n_kr · f_kb [13] met de correctiefactor
+  // voor de lagering f_kb = 0,32 / 1,0 / 1,55 / 2,24. Besluit opdrachtgever
+  // 09-10-2026: de catalogus volledig volgen (v1.36). Het rekenprogramma van
+  // MCA laat f_kb weg; de tool komt daardoor bij vast-vrij lager en bij
+  // vast-los/vast-vast hoger uit. Tr 28×5, la 1150, vast-los: 2647 /min.
   var TRAPEZIUM_NKR_CONSTANTE = 1.107e8;
   var TRAPEZIUM_FKB = { 'vast-vrij': 0.32, 'los-los': 1.0, 'vast-los': 1.55, 'vast-vast': 2.24 };
   function kritischToerentalTrapezium(d2, la, lagering) {
@@ -2703,7 +2705,7 @@ var Rekenkern = (function () {
     if (la <= 0) throw new Error('la moet positief zijn, kreeg ' + la);
     if (TRAPEZIUM_FKB[lagering] === undefined) throw new Error('onbekende lagering: ' + lagering);
     var nKr = TRAPEZIUM_NKR_CONSTANTE * d2 / (la * la);
-    return { nCr: nKr, nCrMax: 0.8 * Math.min(TRAPEZIUM_FKB[lagering], 1) * nKr };
+    return { nCr: nKr, nCrMax: 0.8 * TRAPEZIUM_FKB[lagering] * nKr };
   }
 
   // Kinematica: aantal omwentelingen per minuut volgt uit lineaire snelheid
@@ -7647,13 +7649,15 @@ var Afbeeldingen = (function () {
       // Spec 2026-10-09-trapezium-mcalc §3 (v1.35): het rekenrapport van MCA.
       naam: 'Trapezium Tr 28×5 — rekenrapport MCA (5400 N, 0,1 m/s, vast-los 1150 mm)',
       toelichting: 'Vlaktedruk, toelaatbare druk bij de glijsnelheid, PV-waarde, inschakelduur en kritisch toerental',
-      verwacht: 'p 2,41 · p_max 8,6 · PV 309 · ED 1 % · n_cr,max 1708 /min',
+      // n_cr,max volgens de catalogus mét f_kb 1,55 (v1.36); het rapport zelf
+      // toont 1708 /min, omdat het rekenprogramma f_kb weglaat.
+      verwacht: 'p 2,41 · p_max 8,6 · PV 309 · ED 1 % · n_cr,max 2647 /min',
       voer: function () {
         var g = Rekenkern.trapeziumGeometrie(28, 5, 1);
         var r = Rekenkern.trapeziumDrukToets(5400, 1200, g.d2, 5, 1, 56, 'brons', 'gecontroleerd');
         var nCr = Rekenkern.kritischToerentalTrapezium(g.d2, 1150, 'vast-los').nCrMax;
         var ok = Math.abs(r.vlaktedruk - 2.407) < 0.001 && r.pMax === 8.6 &&
-          Math.abs(r.pvWaarde - 308.6) < 0.1 && r.edMax === 1 && Math.abs(nCr - 1708) < 1;
+          Math.abs(r.pvWaarde - 308.6) < 0.1 && r.edMax === 1 && Math.abs(nCr - 2647) < 1;
         return {
           werkelijk: 'p ' + fmt(r.vlaktedruk, 2) + ' · p_max ' + fmt(r.pMax, 1) + ' · PV ' + fmt(r.pvWaarde, 0) +
             ' · ED ' + r.edMax + ' % · n_cr,max ' + fmt(nCr, 0) + ' /min',
