@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.33  09-10-2026  FB-001: toelichting bij bedrijf 'Regelmatig' aangepast
   1.32  09-10-2026  Feedbackmail met soort en technische gegevens om meldingen na te spelen
   1.31  09-10-2026  Renders bij type spindel, toebehoren, passende typen, moer, lagerunits en koppeling
   1.30  09-10-2026  Interne verwijzingen (openstaande punten, bronnamen) uit zichtbare teksten en zelftest
@@ -384,7 +385,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.32 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.33 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -5393,7 +5394,7 @@ var WizardLogica = (function () {
         tekst: 'Hoe vaak/lang is de spindel in bedrijf?',
         opties: [
           optie('continu', 'Continu', '> 16 u/dag, hoge cyclusfrequentie'),
-          optie('regelmatig', 'Regelmatig', 'Normale ploegendienst'),
+          optie('regelmatig', 'Regelmatig', 'Dagelijks in gebruik, tot circa 16 u/dag'),
           optie('incidenteel', 'Incidenteel', 'Enkele keren per dag/week'),
           // 'weetniet' is hier GEEN vierde ruwe waarde die Advies.kies()
           // zelf zou moeten kennen — naarAdviesInvoer() vertaalt hem naar
