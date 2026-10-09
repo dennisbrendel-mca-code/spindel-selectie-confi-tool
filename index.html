@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.32  09-10-2026  Feedbackmail met soort en technische gegevens om meldingen na te spelen
   1.31  09-10-2026  Renders bij type spindel, toebehoren, passende typen, moer, lagerunits en koppeling
   1.30  09-10-2026  Interne verwijzingen (openstaande punten, bronnamen) uit zichtbare teksten en zelftest
   1.29  05-10-2026  Miniatuur kogelomloop weer in het advies, met doorverwijzing naar de product engineers
@@ -383,7 +384,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.31 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.32 · 09-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -6643,15 +6644,68 @@ var Offerte = (function () {
   // melding te zien is waar de gebruiker zat. Ontbrekende context blijft weg.
   var FEEDBACK_ONTVANGER = 'dbr@mcabv.nl';
 
+  // Spec 2026-10-09-feedback-verwerking §2 (v1.32): een soortregel en een
+  // blok technische gegevens, zodat een melding na te spelen is. Outlook op
+  // Windows kapt mailto-links boven ±2000 tekens af; daarom wordt het blok
+  // zo nodig ingekort (eerst browser, dan belasting, dan configuratie).
+  var FEEDBACK_MAX_URL = 2000;
+  var FEEDBACK_BEGIN = '--- technische gegevens voor MCA (niet wijzigen) ---';
+  var FEEDBACK_EINDE = '--- einde technische gegevens ---';
+
+  function zonderLeeg(obj) {
+    var uit = {};
+    Object.keys(obj || {}).forEach(function (k) {
+      var w = obj[k];
+      if (w !== undefined && w !== null && w !== '') uit[k] = w;
+    });
+    return uit;
+  }
+
+  // Configuratorvelden alleen als ze afwijken van de startconfiguratie.
+  function feedbackGegevens(context) {
+    var g = context.gegevens || {};
+    var uit = { v: String(context.versie || '').replace(/^v/, '').split(' ')[0], s: g.s };
+    if (g.stap !== undefined && g.stap !== null) uit.stap = g.stap;
+    uit.w = zonderLeeg(g.w);
+    if (g.c) {
+      var standaard = g.standaard || {};
+      var c = {};
+      var gevuld = zonderLeeg(g.c);
+      Object.keys(gevuld).forEach(function (k) {
+        if (String(gevuld[k]) !== String(standaard[k])) c[k] = gevuld[k];
+      });
+      uit.c = c;
+    }
+    if (g.b) uit.b = zonderLeeg(g.b);
+    if (g.ua) uit.ua = String(g.ua).slice(0, 120);
+    if (g.t) uit.t = g.t;
+    return uit;
+  }
+
   function feedbackMailtoUrl(context) {
-    var regels = ['Mijn feedback:', '', '', '', '—'];
+    var regels = ['Soort (laat staan wat past): fout / verbetering / vraag', '',
+      'Wat ging er mis, of wat kan beter?', '', '', '', '—'];
     [['Versie', context.versie], ['Scherm', context.scherm],
      ['Spindeltype', context.type], ['Bestelcode', context.bestelcode]].forEach(function (r) {
       if (r[1] !== undefined && r[1] !== null && r[1] !== '') regels.push(r[0] + ': ' + r[1]);
     });
-    return 'mailto:' + FEEDBACK_ONTVANGER +
-      '?subject=' + encodeURIComponent('Feedback MCA Spindel Tool ' + context.versie) +
-      '&body=' + encodeURIComponent(regels.join('\n'));
+    function url(gegevens) {
+      var body = regels.slice();
+      if (gegevens) body.push('', FEEDBACK_BEGIN, JSON.stringify(gegevens), FEEDBACK_EINDE);
+      return 'mailto:' + FEEDBACK_ONTVANGER +
+        '?subject=' + encodeURIComponent('Feedback MCA Spindel Tool ' + context.versie) +
+        '&body=' + encodeURIComponent(body.join('\n'));
+    }
+    if (!context.gegevens) return url(null);
+    var g = feedbackGegevens(context);
+    var u = url(g);
+    ['ua', 'b', 'c'].forEach(function (k) {
+      if (u.length < FEEDBACK_MAX_URL || g[k] === undefined) return;
+      delete g[k];
+      g.afgekapt = true;
+      u = url(g);
+    });
+    return u;
   }
 
   function verstuurFeedback(context) {
@@ -6799,6 +6853,7 @@ var Offerte = (function () {
     VERSIE: '1.0',
     AANVRAAGREFERENTIE: AANVRAAGREFERENTIE,
     feedbackMailtoUrl: feedbackMailtoUrl,
+    feedbackGegevens: feedbackGegevens,
     verstuurFeedback: verstuurFeedback,
     samenvatting: samenvatting,
     mailtoUrl: mailtoUrl,
@@ -8652,6 +8707,20 @@ var Afbeeldingen = (function () {
         ? 'Wizard, stap ' + stap.nummer + ' van ' + stappen.length + ': ' + stap.titel
         : 'Wizard';
     }
+    // Spec 2026-10-09-feedback-verwerking §2 (v1.32): alles om de melding na
+    // te spelen; Offerte.feedbackGegevens() dunt het uit.
+    var inConfigurator = !document.getElementById('configuratorView').hidden;
+    var stapNu = wizStappen()[wizStapIndex];
+    context.gegevens = {
+      s: inConfigurator ? 'configurator' : 'wizard',
+      stap: !inConfigurator && stapNu ? stapNu.nummer : null,
+      w: Object.assign({}, wizAntwoorden),
+      c: inConfigurator ? lezenRuweConfig() : null,
+      standaard: inConfigurator ? (STANDAARD[huidigType] || null) : null,
+      b: inConfigurator ? lezenBelasting() : null,
+      ua: navigator.userAgent,
+      t: new Date().toISOString()
+    };
     Offerte.verstuurFeedback(context);
   });
   document.getElementById('offerteModalSluit').addEventListener('click', offerteSluiten);
