@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.41  12-10-2026  Zichtbare teksten nagelopen (u-vorm, geen gedachtestreepjes, korter en actiever); begrijpelijke melding zonder kracht en gewicht
   1.40  12-10-2026  Uitleg bij de vraag naar de axiale kracht
   1.39  12-10-2026  Nauwkeurigheid als lineaire schaal in plaats van schietschijf
   1.38  12-10-2026  Schema's bij montage-oriëntatie, nauwkeurigheid, type aandrijving, motortype en aandrijfzijde
@@ -398,8 +399,8 @@ code.bestelcode {
   <div class="merk">
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
-    <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.40 · 12-10-2026</div>
+    <div class="titel" id="schermTitel">Spindel voorselectie</div>
+    <div class="versie" id="toolVersie">v1.41 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -492,7 +493,7 @@ code.bestelcode {
 <div class="offerte-modal-bg" id="offerteModalBg" hidden>
   <div class="offerte-modal" role="dialog" aria-modal="true" aria-labelledby="offerteModalTitel">
     <div class="offerte-modal-kop">
-      <span id="offerteModalTitel">Offerte aanvragen — Spindel</span>
+      <span id="offerteModalTitel">Offerte aanvragen: spindel</span>
       <button type="button" class="offerte-modal-sluit" id="offerteModalSluit" aria-label="Venster sluiten">✕</button>
     </div>
     <div class="offerte-modal-body">
@@ -508,9 +509,9 @@ code.bestelcode {
       <div class="offerte-tekening-rij">
         <input type="file" id="offerteTekening">
         <p class="offerte-tekening-hint">
-          Een e-mailaanvraag vanuit de configurator kan geen bijlage meesturen: kies hier
-          alleen de bestandsnaam, en voeg het bestand na het openen van uw e-mailprogramma
-          zelf nog als bijlage toe.
+          Een aanvraag per e-mail vanuit de configurator kan geen bijlage meesturen. Kies
+          hier het bestand, dan komt de bestandsnaam in de aanvraag. Voeg het bestand daarna
+          zelf als bijlage toe in uw e-mailprogramma.
         </p>
       </div>
 
@@ -1259,8 +1260,8 @@ var Catalogus = (function () {
 
   function draadspindelEindeTekst(code, lagerunits) {
     var definitief = draadspindelEindeCode(code, lagerunits);
-    if (code === 'Z') return 'Z — bewerking volgens tekening';
-    return definitief + ' — ' + draadspindelEinde(code).naam +
+    if (code === 'Z') return 'Z – bewerking volgens tekening';
+    return definitief + ' – ' + draadspindelEinde(code).naam +
       (definitief !== code ? ', met lagerblok' : '');
   }
 
@@ -1821,7 +1822,7 @@ var ConfiguratorLogica = (function () {
     // check op de code hier — zo blijft dit generiek voor elk moertype dat
     // ooit zo'n vlag krijgt.
     return lijst.map(function (m) {
-      var label = m.code + ' — ' + m.naam;
+      var label = m.code + ' – ' + m.naam;
       if (m.opAanvraag) label += ' (op aanvraag)';
       return { waarde: m.code, label: label };
     });
@@ -1930,10 +1931,10 @@ var ConfiguratorLogica = (function () {
   // Welke RVS-kwaliteit bij welke kolom hoort is openstaand punt 13; D en E
   // horen daarom allebei bij de RVS-uitvoeringen.
   var SPINDEL_MATERIALEN = [
-    { code: 'A', materiaal: 'C35', label: 'A — C35' },
-    { code: 'B', materiaal: 'C45', label: 'B — C45' },
-    { code: 'D', materiaal: 'RVS', label: 'D — RVS 304' },
-    { code: 'E', materiaal: 'RVS', label: 'E — RVS 316' }
+    { code: 'A', materiaal: 'C35', label: 'A – C35' },
+    { code: 'B', materiaal: 'C45', label: 'B – C45' },
+    { code: 'D', materiaal: 'RVS', label: 'D – RVS 304' },
+    { code: 'E', materiaal: 'RVS', label: 'E – RVS 316' }
   ];
 
   function uitvoeringenVoorSpindelmateriaal(maat, code) {
@@ -1984,8 +1985,8 @@ var ConfiguratorLogica = (function () {
   // welke ontbreekt. Bestaat er bij die diameter geen enkele unit, dan blijven
   // alleen '0' en 'Z' over.
   var ASTAP_ZONDER_LAGERUNIT = [
-    { waarde: '0', label: '0 — zonder bewerking' },
-    { waarde: 'Z', label: 'Z — volgens tekening' }
+    { waarde: '0', label: '0 – zonder bewerking' },
+    { waarde: 'Z', label: 'Z – volgens tekening' }
   ];
 
   var LAGERUNIT_CODES = ['FKN', 'BKN', 'FFN', 'BFN'];
@@ -2017,9 +2018,9 @@ var ConfiguratorLogica = (function () {
   // noemt precies die. Bestaat er bij d geen enkele unit, dan de volledige uitleg.
   function lagerunitOntbreektMelding(d, codes) {
     if (!lagerunitBeschikbaar(d)) {
-      return 'Voor Ø' + d + ' mm staat in de MCA-catalogus (p.24–27) geen lagerunit, dus zijn ' +
-        'FKN/BKN/FFN/BFN hier niet te kiezen. "0" (zonder bewerking) en "Z" (volgens tekening) ' +
-        'kunnen wel. MCA bevestigt op aanvraag of er voor deze diameter een lagerunit mogelijk is.';
+      return 'Voor Ø' + d + ' mm staat in de MCA-catalogus (p.24–27) geen lagerunit; FKN, BKN, FFN en ' +
+        'BFN zijn hier dus niet te kiezen. "0" (zonder bewerking) en "Z" (volgens tekening) ' +
+        'kunnen wel. Op aanvraag laat MCA weten of er voor deze diameter een lagerunit mogelijk is.';
     }
     var ontbrekend = codes || lagerunitCodesVoor(d).filter(function (c) { return !lagerunitBestaat(c, d); });
     if (!ontbrekend.length) return null;
@@ -2035,7 +2036,7 @@ var ConfiguratorLogica = (function () {
     var maat = Catalogus.lagerunitMaat('WBK', d);
     if (maat === null) return [];
     return Catalogus.wbkUitvoeringen(maat).map(function (u) {
-      return { waarde: 'WBK' + u, label: 'WBK ' + u + ' — vast, flens, ' + WBK_UITVOERING_LABEL[u] };
+      return { waarde: 'WBK' + u, label: 'WBK ' + u + ' – vast, flens, ' + WBK_UITVOERING_LABEL[u] };
     });
   }
 
@@ -2044,15 +2045,15 @@ var ConfiguratorLogica = (function () {
       var einden = Catalogus.draadspindel.einden;
       var opties = einden.filter(function (e) { return e.code === 'NNN'; })
         .concat(einden.filter(function (e) { return e.code !== 'NNN'; }))
-        .map(function (e) { return { waarde: e.code, label: e.code + ' — ' + e.naam }; });
-      opties.push({ waarde: 'Z', label: 'Z — volgens tekening' });
+        .map(function (e) { return { waarde: e.code, label: e.code + ' – ' + e.naam }; });
+      opties.push({ waarde: 'Z', label: 'Z – volgens tekening' });
       return { opties: opties, lagerunitBeschikbaar: true, toelichting: null };
     }
     var bestaand = Catalogus.lagerunits.filter(function (u) { return lagerunitBestaat(u.code, d); });
     var wbk = wbkOptiesVoor(d);
     return {
       opties: ASTAP_ZONDER_LAGERUNIT.concat(bestaand.map(function (u) {
-        return { waarde: u.code, label: u.code + ' — ' + u.functie + ', ' + u.vorm };
+        return { waarde: u.code, label: u.code + ' – ' + u.functie + ', ' + u.vorm };
       })).concat(wbk),
       lagerunitBeschikbaar: bestaand.length > 0 || wbk.length > 0,
       toelichting: lagerunitOntbreektMelding(d)
@@ -2793,9 +2794,9 @@ var Rekenkern = (function () {
   // Zonder die regel leest een klant alleen het woord 'statisch' of 'geen' en
   // moet hij zelf maar raden of dat goed of slecht nieuws is.
   var KLASSE_UITLEG = {
-    dynamisch: 'de moer komt uit beweging vanzelf tot stilstand — de enige klasse die als ' +
+    dynamisch: 'de moer komt uit beweging vanzelf tot stilstand. Dit is de enige klasse die als ' +
       'remfunctie geldt, en ook dan blijft een tweede voorziening nodig',
-    statisch: 'de moer blijft staan uit stilstand, maar niet bij trilling — dit is géén remfunctie',
+    statisch: 'de moer blijft vanuit stilstand staan, maar niet bij trilling. Dit is géén remfunctie',
     geen: 'de last drijft de spindel terug zodra het aandrijfkoppel wegvalt'
   };
 
@@ -3387,10 +3388,9 @@ var Rekenkern = (function () {
 
   // Eén tekst voor scherm, wizard en offerte.
   var DS_INDICATIEF_MELDING =
-    'Kritisch toerental, slankheidsgrens en draagvermogen van de moer rusten op waarden die uit ' +
-    'de grafieken van de leverancierscatalogus zijn afgeleid: effectieve kerndiameters en de ' +
-    'PV-reductiekromme. Behandel de uitkomst als indicatief tot de leverancier die waarden ' +
-    'bevestigt (openstaande punten D2 en D3).';
+    'Kritisch toerental, slankheidsgrens en draagvermogen van de moer zijn gebaseerd op waarden uit ' +
+    'de grafieken van de leverancierscatalogus (effectieve kerndiameters en de PV-reductiekromme). ' +
+    'Beschouw de uitkomst als indicatief totdat de leverancier die waarden bevestigt.';
 
   return {
     VERSIE: '1.0',
@@ -3479,7 +3479,7 @@ var Advies = (function () {
 
   var REM_TEKST =
     'Zelfremming is geen veiligheidsvoorziening en geen valbeveiliging. ' +
-    'Voorzie bij verticale inbouw altijd een mechanische veerdrukrem, een ' +
+    'Zorg bij verticale inbouw altijd voor een mechanische veerdrukrem, een ' +
     'klemvoorziening of een veiligheidsmoer.';
 
   // ── De twee waarschuwingsteksten uit het bronnenonderzoek ───────────────
@@ -3525,17 +3525,17 @@ var Advies = (function () {
       ' < ρ′ = ' + graden(rhoStatisch) + '). Dat betekent alleen dat de moer bij stilstand ' +
       'en onder de aangenomen wrijving niet vanzelf gaat lopen. Het is geen rem en geen ' +
       'valbeveiliging.\n\n' +
-      'Statische zelfremming kan al door geringe trillingen of schokken worden opgeheven. ' +
+      'Al geringe trillingen of schokken kunnen statische zelfremming opheffen. ' +
       'Ook slijtage van de bronzen moer, een ander smeermiddel, een gladdere ' +
       'spindeloppervlakte of temperatuurverandering verlagen de wrijving en daarmee de ' +
       'zelfremming.\n\n' +
-      'Voorzie bij verticale inbouw altijd een aanvullende voorziening:\n' +
+      'Zorg bij verticale inbouw altijd voor een aanvullende voorziening:\n' +
       '• een mechanische veerdrukrem op de motor (houdt de last ook bij spanningsuitval), en/of\n' +
       '• een klem- of vastzetinrichting op de spindel, en/of\n' +
       '• een veiligheidsmoer die de last opvangt bij slijtage of breuk van de draagmoer.\n\n' +
       'Neem statische zelfremming niet op in de risicobeoordeling als lasthoudende functie. ' +
-      'Alleen dynamische zelfremming (spoedhoek < 2,4°) mag als remfunctie worden beschouwd ' +
-      '— en ook dan blijft een tweede voorziening voor personenveiligheid stand der ' +
+      'Alleen dynamische zelfremming (spoedhoek < 2,4°) mag als remfunctie gelden. ' +
+      'Ook dan blijft een tweede voorziening voor personenveiligheid stand der ' +
       'techniek.';
   }
 
@@ -3571,7 +3571,7 @@ var Advies = (function () {
       'spoed kleiner is dan ' + deel + ' van de diameter (' + mm(z.grensSpoed) + '); deze spoed is ' +
       mm(z.P) + '. Die regel geldt alleen droog en zonder trillingen: smering verlaagt de wrijving ' +
       'en trillingen laten de spindel eerder terugdraaien. Het is geen rem en geen valbeveiliging.\n\n' +
-      'Voorzie bij verticale inbouw altijd een aanvullende voorziening:\n' +
+      'Zorg bij verticale inbouw altijd voor een aanvullende voorziening:\n' +
       '• een mechanische veerdrukrem op de motor (houdt de last ook bij spanningsuitval), en/of\n' +
       '• een klem- of vastzetinrichting op de spindel.';
   }
@@ -4042,7 +4042,7 @@ var Advies = (function () {
       var dekking = ' Let op: van de ' + Catalogus[invoer.type].maten.length +
         ' maten in het programma zijn er ' + lijst.length + ' doorgerekend; voor de overige ' +
         'ontbreekt ' + (invoer.type === 'trapezium' ? 'het draaggetal (C dyn)' : 'de kerndiameter (d3)') +
-        ' nog in de tool. MCA kan deze combinatie dus mogelijk wél leveren — vraag het na.';
+        ' nog in de tool. MCA kan deze combinatie dus mogelijk wél leveren; vraag het na.';
       var geenMaatTekst = afgevallenOpMoer
         ? 'Geen enkele doorgerekende maat haalt deze combinatie. Bij de maten die knik en kritisch ' +
           'toerental wel halen, haalt geen moer ' + moerRedenTekst(afgevallenOpMoer, invoer) +
@@ -4104,10 +4104,10 @@ var Advies = (function () {
     if (invoer.type === 'trapezium') {
       waarschuwingen.push({
         ernst: 'info',
-        tekst: 'De draagkrachttoets (C dyn ' + berekend.cDynBFM.toFixed(1) + ' kN) gebruikt de ' +
-               'BFM-flensmoerwaarde. Voor BRM- en BSM-moeren zijn de eigen draaggetallen nog niet ' +
-               'overgenomen; dit is een dynamisch draaggetal voor levensduurberekening, geen ' +
-               'statische breukgrens en geen doorgerekende levensduur.'
+        tekst: 'De draagkrachttoets (C dyn ' + berekend.cDynBFM.toFixed(1).replace('.', ',') +
+               ' kN) rekent met de waarde van de BFM-flensmoer; de eigen draaggetallen van BRM- en ' +
+               'BSM-moeren zitten nog niet in de tool. C dyn is een dynamisch draaggetal voor de ' +
+               'levensduurberekening, geen statische breukgrens en geen doorgerekende levensduur.'
       });
     }
 
@@ -4115,7 +4115,7 @@ var Advies = (function () {
       waarschuwingen.push({
         ernst: 'let-op',
         tekst: 'Bij continu bedrijf loopt de glijsnelheid op tot ' +
-               berekend.glijsnelheid.toFixed(2) + ' m/s. Dat geeft wrijvingswarmte en ' +
+               berekend.glijsnelheid.toFixed(2).replace('.', ',') + ' m/s. Dat geeft wrijvingswarmte en ' +
                'versnelde slijtage van de moer. Overweeg een kogelomloopspindel.'
       });
     }
@@ -4926,7 +4926,7 @@ var Maatvoering = (function () {
   // Global Constraints van het plan.
   // Opdrachtgever 01-10-2026: het aandrijfeinde wordt vaak door de klant of
   // door de koppeling bepaald.
-  var WBK_AANDRIJF_MELDING = 'Het aandrijfeinde bij WBK is niet in de astaplengte opgenomen: de maat volgt uit de koppeling of de tekening van de klant.';
+  var WBK_AANDRIJF_MELDING = 'Het aandrijfeinde bij WBK is niet in de astaplengte opgenomen: de maat volgt uit de koppeling of uit uw eigen tekening.';
 
   function positief(waarde, naam) {
     if (typeof waarde !== 'number' || !Number.isFinite(waarde) || waarde <= 0) {
@@ -4996,7 +4996,7 @@ var Maatvoering = (function () {
   }
 
   function blokOnbekend(code) {
-    return 'Maten van lagerblok ' + code + ' staan niet in de catalogus — op aanvraag.';
+    return 'Maten van lagerblok ' + code + ' staan niet in de catalogus; op aanvraag.';
   }
 
   // Zelfde toegestane waarden als Tekening.unitMeegeleverd; maatvoering mag
@@ -5044,7 +5044,7 @@ var Maatvoering = (function () {
 
   function moerOnbekend(cfg) {
     var maat = cfg.type === 'trapezium' ? 'Tr ' + fmt(cfg.d) + '×' + fmt(cfg.P) : 'Ø' + fmt(cfg.d) + '×' + fmt(cfg.P);
-    return 'Moermaten van ' + cfg.moertype + ' ' + maat + ' staan niet in de catalogus — op aanvraag.';
+    return 'Moermaten van ' + cfg.moertype + ' ' + maat + ' staan niet in de catalogus; op aanvraag.';
   }
 
   // draadlengte = totaal − astaps; slag = draadlengte − moerlengte. Zonder
@@ -5242,7 +5242,7 @@ var WizardLogica = (function () {
       voorstel: 'kogelomloop',
       redenen: redenen,
       toelichting: 'bij deze belasting, snelheid en overspanning haalt geen enkele trapeziummaat ' +
-        'de knikbelasting, het kritisch toerental, de glijsnelheid of het draaggetal, dus is een kogelomloopspindel hier de enige haalbare route'
+        'de grenzen voor knikbelasting, kritisch toerental, glijsnelheid en draaggetal; alleen een kogelomloopspindel is hier haalbaar'
     };
   }
 
@@ -5332,7 +5332,7 @@ var WizardLogica = (function () {
           ' N/mm² (toelaatbaar bij ' + nlGetal(c.vgTabel, 1) + ' m/s: ' + nlGetal(c.pMax, 1) + ' N/mm²)',
         ok: !!c.vlaktedrukOk },
       { label: 'Toelaatbare inschakelduur',
-        tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % — ' + c.edSmering, ok: null }
+        tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % (' + c.edSmering + ')', ok: null }
     ];
   }
 
@@ -5361,7 +5361,7 @@ var WizardLogica = (function () {
           .map(function (w) { return w.tekst; });
         opties.push({
           type: type,
-          maat: { code: maat.code || ('Ø' + maat.d + '×' + maat.P), d: maat.d, P: maat.P },
+          maat: { code: maat.code || ('Ø' + maat.d + '×' + String(maat.P).replace('.', ',')), d: maat.d, P: maat.P },
           moertype: cfg.moertype,
           eta: c.eta,
           aandrijfkoppelNm: c.aandrijfkoppel,
@@ -5511,7 +5511,7 @@ var WizardLogica = (function () {
               'Klein (Ø6–16 mm), stil, zelfsmerende kunststof moer, optioneel spelingsvrij; ' +
               'voor lichte belasting tot circa 1 kN'),
             optie('weet-niet', 'Weet ik niet',
-              'De wizard volgt de kogelomloop-route en heroverweegt in stap 8')
+              'De wizard gaat uit van een kogelomloopspindel en kijkt in stap 8 opnieuw naar het type')
           ]
         })
       ],
@@ -5531,8 +5531,8 @@ var WizardLogica = (function () {
             trapezium: 'DIN 103 – spindel 7e, moer 7H',
             draadspindel: 'spoednauwkeurigheid 76 µm per 300 mm' },
           { label: 'Zelfremming', kogelomloop: 'niet van toepassing',
-            trapezium: 'vaak (statisch) zelfremmend — nooit als veiligheidsvoorziening te gebruiken',
-            draadspindel: 'alleen bij kleine spoed, droog en zonder trilling — nooit als veiligheidsvoorziening te gebruiken' },
+            trapezium: 'vaak (statisch) zelfremmend; nooit gebruiken als veiligheidsvoorziening',
+            draadspindel: 'alleen bij kleine spoed, droog en zonder trilling; nooit gebruiken als veiligheidsvoorziening' },
           { label: 'Geluid en slijtage', kogelomloop: 'rollend contact, stil, weinig slijtage',
             trapezium: 'glijdend contact, meer geluid en slijtage bij continu bedrijf',
             draadspindel: 'glijdend contact met een zelfsmerende kunststof moer, stil' },
@@ -5564,15 +5564,15 @@ var WizardLogica = (function () {
       // Spec 2026-10-02-lead-screw-gerold-miniatuur-ontwerp §3 (feedback
       // opdrachtgever 02-10-2026): alle kogelomloopspindels zijn gerold; de
       // vraag bepaalt alleen nog de precisieklasse, niet meer het proces.
-      toelichting: 'Bepaalt welke precisieklasse bij uw toepassing hoort. De standaardspindels zijn ' +
-        'gerold (T7); hogere nauwkeurigheid (P5/P3, gewerveld of geslepen) bepalen de product engineers van MCA.',
+      toelichting: 'Uw antwoord bepaalt welke precisieklasse bij uw toepassing hoort. De standaardspindels zijn ' +
+        'gerold (T7). Een hogere nauwkeurigheid (P5/P3, gewerveld of geslepen) stemmen de product engineers van MCA met u af.',
       vragen: [
         vraag({
           sleutel: 'nauwkeurigheid',
           tekst: 'Wat is voor uw toepassing het belangrijkst?',
           opties: [
             optie('herhaal', 'Herhaalnauwkeurigheid', 'Steeds exact naar dezelfde positie terugkeren'),
-            optie('positie', 'Positienauwkeurigheid', 'Absolute positie moet kloppen over de hele slag'),
+            optie('positie', 'Positienauwkeurigheid', 'De absolute positie moet over de hele slag kloppen'),
             optie('beide', 'Beide zijn belangrijk', 'Zowel herhaal- als positienauwkeurigheid tellen mee'),
             optie('geen', 'Geen van beide is kritisch', 'Eenvoudige transportbeweging')
           ]
@@ -5588,9 +5588,9 @@ var WizardLogica = (function () {
             // Spec §3: zeer hoog/hoog gaan niet langer automatisch naar een
             // geslepen uitvoering — dat bestaat niet meer — maar naar advies
             // via de product engineers van MCA. Gemiddeld (T7) blijft gelijk.
-            optie('zeerhoog', 'Zeer hoog (< 0,01 mm)', 'Meet-/inspectiemachines, optica — advies via de product engineers van MCA'),
-            optie('hoog', 'Hoog (0,01 – 0,05 mm)', 'CNC-bewerking, precisie-assemblage — advies via de product engineers van MCA'),
-            optie('gemiddeld', 'Gemiddeld (0,05 – 0,2 mm)', 'Algemene automatisering — levert klasse T7'),
+            optie('zeerhoog', 'Zeer hoog (< 0,01 mm)', 'Meet- en inspectiemachines, optica; advies via de product engineers van MCA'),
+            optie('hoog', 'Hoog (0,01 – 0,05 mm)', 'CNC-bewerking, precisie-assemblage; advies via de product engineers van MCA'),
+            optie('gemiddeld', 'Gemiddeld (0,05 – 0,2 mm)', 'Algemene automatisering; klasse T7'),
             optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren')
           ]
         })
@@ -5602,8 +5602,8 @@ var WizardLogica = (function () {
     return {
       nummer: 2,
       titel: 'Uitvoering',
-      toelichting: 'Het P/C-klassesysteem bestaat bij trapeziumspindels niet: ' +
-        'DIN 103 – spindel 7e, moer 7H is de standaard voor de hele reeks.',
+      toelichting: 'Trapeziumspindels kennen geen P- of C-klassen: ' +
+        'de hele reeks volgt DIN 103 (spindel 7e, moer 7H).',
       vragen: [
         vraag({
           sleutel: 'spelingsvrij',
@@ -5621,8 +5621,8 @@ var WizardLogica = (function () {
             optie('gerold', 'Gerold',
               'Sterk en met een gladde flank; standaardproces, ruimste programma (C35, RVS)'),
             optie('gewerveld', 'Gewerveld',
-              'Nauwkeuriger spoed en rechter; bij RVS en de grootste maten soms de enige uitvoering (C45, RVS)'),
-            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — standaard is gerold')
+              'Nauwkeuriger spoed en een rechtere spindel; bij RVS en de grootste maten soms de enige uitvoering (C45, RVS)'),
+            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (standaard: gerold)')
           ]
         })
       ]
@@ -5644,7 +5644,7 @@ var WizardLogica = (function () {
               'Veergespannen moer: geen terugslag bij richtingwisseling, wel een klein sleepkoppel'),
             optie('nee', 'Nee, normale speling volstaat',
               'Standaardmoer: 0,025–0,25 mm speling, hoger draagvermogen, draait vrij'),
-            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — eerst de standaardmoer')
+            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (eerst de standaardmoer)')
           ]
         }),
         vraag({
@@ -5653,7 +5653,7 @@ var WizardLogica = (function () {
           opties: [
             optie('gecoat', 'Gecoat (PTFE)', 'Hoger rendement en minder slijtage, maar minder zelfremming'),
             optie('ongecoat', 'Ongecoat', 'Iets lager rendement, iets meer zelfremming'),
-            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — standaard is gecoat')
+            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (standaard: gecoat)')
           ]
         })
       ]
@@ -5691,7 +5691,7 @@ var WizardLogica = (function () {
         optie('cleanroom', 'Cleanroom', 'Spindel C35/C45 of RVS, cleanroom-vet, lage deeltjesemissie'),
         optie('vochtig', 'Vochtig, stoffig, buiten', 'Spindel met coating, balg en dubbele afdichting'),
         optie('corrosief', 'Corrosief', 'Spindel en moer in RVS 316 (E), verzegelde afdichting'),
-        optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — standaard is C35/C45 met brons')
+        optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (standaard: C35/C45 met brons)')
       ];
     }
     return [
@@ -5700,7 +5700,7 @@ var WizardLogica = (function () {
       optie('cleanroom', 'Cleanroom', 'Staal of RVS, cleanroom-vet, lage deeltjesemissie'),
       optie('vochtig', 'Vochtig, stoffig, buiten', 'Staal met coating, balg en dubbele afdichting'),
       optie('corrosief', 'Corrosief', 'RVS 316 of FCR-coating, verzegelde afdichting'),
-      optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — standaard is staal')
+      optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (standaard: staal)')
     ];
   }
 
@@ -5721,13 +5721,13 @@ var WizardLogica = (function () {
         // de vlaktedruk- en glijsnelheidsgrens), en het RVS/staal-onderscheid
         // voor de bestelcode komt uit de omgevingsvraag hierboven. Zonder
         // deze regel zou een klant kunnen denken dat RVS hier geen optie is.
-        hint: 'RVS is geen aparte keuze op deze vraag: die volgt uit uw antwoord bij ' +
-          '"In welke omgeving werkt de spindel?" hierboven. Deze vraag gaat alleen over het ' +
-          'onderscheid metaal (brons) of kunststof, dat de toelaatbare vlaktedruk en glijsnelheid bepaalt.',
+        hint: 'RVS kiest u hier niet: dat volgt uit uw antwoord op ' +
+          '"In welke omgeving werkt de spindel?" hierboven. Deze vraag gaat alleen over brons ' +
+          'of kunststof; dat bepaalt de toelaatbare vlaktedruk en glijsnelheid.',
         opties: [
           optie('brons', 'Brons (CuSn7ZnPb)', 'Standaard; hoogste toelaatbare vlaktedruk en glijsnelheid'),
           optie('kunststof', 'Kunststof',
-            'Lagere vlaktedrukgrens (1 N/mm²) en glijsnelheidsgrens (0,6 m/s) — de rekenkern let daarop')
+            'Lagere grens voor vlaktedruk (1 N/mm²) en glijsnelheid (0,6 m/s); de tool rekent daarmee')
         ]
       }));
     }
@@ -5746,11 +5746,11 @@ var WizardLogica = (function () {
       nummer: 3,
       titel: 'Omgeving',
       toelichting: tak === 'trapezium'
-        ? 'Moer en spindel worden bij trapezium apart gekozen, precies zoals de bestelcode het vraagt.'
+        ? 'Bij trapezium hebben moer en spindel elk een eigen materiaal, net als in de bestelcode.'
         : tak === 'draadspindel'
         ? 'De spindel is altijd RVS en de moer zelfsmerende kunststof; de omgeving bepaalt vooral of ' +
           'coating en werkbereik passen.'
-        : 'Bepaalt het geadviseerde materiaal (staal of RVS) en het type afdichting of coating.',
+        : 'De omgeving bepaalt het geadviseerde materiaal (staal of RVS) en het type afdichting of coating.',
       vragen: vragen
     };
   }
@@ -5762,11 +5762,11 @@ var WizardLogica = (function () {
     var vragen = [
       vraag({
         sleutel: 'bedrijf',
-        tekst: 'Hoe vaak/lang is de spindel in bedrijf?',
+        tekst: 'Hoe vaak en hoe lang is de spindel in bedrijf?',
         opties: [
           optie('continu', 'Continu', '> 16 u/dag, hoge cyclusfrequentie'),
           optie('regelmatig', 'Regelmatig', 'Dagelijks in gebruik, tot circa 16 u/dag'),
-          optie('incidenteel', 'Incidenteel', 'Enkele keren per dag/week'),
+          optie('incidenteel', 'Incidenteel', 'Enkele keren per dag of week'),
           // 'weetniet' is hier GEEN vierde ruwe waarde die Advies.kies()
           // zelf zou moeten kennen — naarAdviesInvoer() vertaalt hem naar
           // 'regelmatig' (een neutraal midden tussen incidenteel en
@@ -5780,7 +5780,7 @@ var WizardLogica = (function () {
         tekst: 'Te verplaatsen gewicht (indicatief, kg)',
         type: 'getal',
         eenheid: 'kg',
-        hint: 'Laat leeg als u dit nog niet weet — MCA denkt graag mee.'
+        hint: 'Weet u dit nog niet? Laat het veld leeg; MCA denkt graag mee.'
       }),
       // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): geleiding en
       // versnelling bepalen samen met het gewicht de axiale kracht
@@ -5800,7 +5800,7 @@ var WizardLogica = (function () {
       }),
       vraag({
         sleutel: 'kracht',
-        tekst: 'Gewenste axiale kracht/belasting (N, optioneel)',
+        tekst: 'Gewenste axiale kracht of belasting (N, optioneel)',
         type: 'getal',
         eenheid: 'N',
         // v1.40: korte uitleg wat de axiale kracht is (verzoek opdrachtgever 12-10-2026).
@@ -5847,7 +5847,7 @@ var WizardLogica = (function () {
       type: 'getal',
       eenheid: 'mm',
       groep: BEWEGING,
-      hint: 'Helpt te bepalen of knik en kritisch toerental bij deze toepassing een rol spelen.'
+      hint: 'Hiermee bepaalt de tool of knik en kritisch toerental een rol spelen.'
     }));
     // Samengestelde vraag: een exact getal (mm/s) is de primaire invoer;
     // de categorieën ernaast zijn een snelkeuze voor wie het getal niet
@@ -5880,7 +5880,7 @@ var WizardLogica = (function () {
       eenheid: 'm/s²',
       groep: BEWEGING,
       min: 0,
-      hint: 'Laat leeg als u dit niet weet — dan rekent de tool met de versnelling die uit slag, ' +
+      hint: 'Weet u dit niet? Laat het veld leeg. De tool rekent dan met de versnelling die uit slag, ' +
         'snelheid en tijd volgt, en anders met 9,81 m/s².'
     }));
     vragen.push(vraag({
@@ -5896,8 +5896,8 @@ var WizardLogica = (function () {
     return {
       nummer: 4,
       titel: 'Bedrijfscondities',
-      toelichting: 'Deze gegevens zijn indicatief — u kunt exacte waarden later in de ' +
-        'configurator verfijnen.',
+      toelichting: 'Deze gegevens zijn indicatief; in de configurator kunt u later ' +
+        'exacte waarden invullen.',
       vragen: vragen
     };
   }
@@ -5951,23 +5951,22 @@ var WizardLogica = (function () {
   // de totale verplaatsing van de last).
   function stap5(tak) {
     var vertHint = tak === 'trapezium'
-      ? 'De tool berekent de spoedhoek en de zelfremklasse, en adviseert hoe dan ook een rem'
+      ? 'De tool berekent de spoedhoek en de zelfremklasse en adviseert in elk geval een rem'
       : tak === 'draadspindel'
-      ? 'De tool beoordeelt de zelfremming met de catalogusvuistregel, en adviseert hoe dan ook een rem'
-      : 'Veiligheidsmoer of rem wordt geadviseerd';
+      ? 'De tool beoordeelt de zelfremming met de catalogusvuistregel en adviseert in elk geval een rem'
+      : 'De tool adviseert een veiligheidsmoer of rem';
     // De toelichting verschilt per tak. Sinds v1.24 (spec 2026-10-05-knik-
     // trapezium-en-fabricageteksten-ontwerp §2) gaan overspanning en snelheid
     // ook bij trapezium in de knik- en toerentalcontrole (d3 volgens DIN 103);
     // de snelheid gaat daar bovendien in de glijsnelheidscontrole.
     var toelichting = tak === 'trapezium'
-      ? 'Vanaf hier rekent de rekenkern mee: de opgegeven overspanning en snelheid ' +
-        'gaan direct in de knik- en toerentalcontrole, en de snelheid ook in de ' +
-        'glijsnelheidscontrole.'
+      ? 'Vanaf hier rekent de tool mee: overspanning en snelheid gaan direct in de ' +
+        'knik- en toerentalcontrole, de snelheid ook in de glijsnelheidscontrole.'
       : tak === 'draadspindel'
-      ? 'Vanaf hier rekent de rekenkern mee: overspanning en snelheid gaan in de toerental- en ' +
+      ? 'Vanaf hier rekent de tool mee: overspanning en snelheid gaan in de toerental- en ' +
         'slankheidscontrole, en het toerental bepaalt hoeveel de moer nog mag dragen.'
-      : 'Vanaf hier rekent de rekenkern mee: de opgegeven overspanning en snelheid ' +
-        'gaan direct in de knik- en toerentalcontrole.';
+      : 'Vanaf hier rekent de tool mee: overspanning en snelheid gaan direct in de ' +
+        'knik- en toerentalcontrole.';
     return {
       nummer: 5,
       titel: 'Inbouw',
@@ -5986,17 +5985,17 @@ var WizardLogica = (function () {
             // niet als horizontaal. Een klant die het niet weet, mag nooit
             // stilzwijgend de waarschuwing mislopen die bij verticale
             // inbouw hoort.
-            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren — wordt voorzichtigheidshalve als verticaal behandeld')
+            optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren; de tool rekent voorzichtigheidshalve met verticaal')
           ]
         }),
         vraag({
           sleutel: 'lagering',
           tekst: 'Lagerconfiguratie',
           opties: [
-            optie('vast-vast', 'Vast — Vast', 'Aan beide kanten een vast lager: de hoogste knikkracht en het hoogste toerental, voor lange spindels'),
-            optie('vast-los', 'Vast — Los', 'Het vaste lager neemt de axiale kracht op, het losse lager ondersteunt alleen. Dit is de standaardopstelling'),
-            optie('vast-vrij', 'Vast — Vrij', 'Eén kant vrij: alleen voor korte spindels en lage toerentallen'),
-            optie('los-los', 'Los — Los', 'Aan beide kanten alleen ondersteund: voor een lichte belasting en een korte afstand'),
+            optie('vast-vast', 'Vast – vast', 'Aan beide kanten een vast lager: de hoogste knikkracht en het hoogste toerental, voor lange spindels'),
+            optie('vast-los', 'Vast – los', 'Standaardopstelling: het vaste lager neemt de axiale kracht op, het losse lager ondersteunt alleen'),
+            optie('vast-vrij', 'Vast – vrij', 'Eén kant vrij: alleen voor korte spindels en lage toerentallen'),
+            optie('los-los', 'Los – los', 'Aan beide kanten alleen ondersteund: voor een lichte belasting en een korte afstand'),
             optie('weetniet', 'Weet ik niet', 'Adviseer op basis van mijn antwoorden')
           ]
         }),
@@ -6011,7 +6010,7 @@ var WizardLogica = (function () {
           type: 'getal',
           eenheid: 'mm',
           hint: 'Afstand tussen de bevestigingspunten van de lagers. Weet u dit nog niet? ' +
-            'Laat leeg — dan rekent de tool met 800 mm.'
+            'Laat het veld leeg; de tool rekent dan met 800 mm.'
         })
       ]
     };
@@ -6020,14 +6019,14 @@ var WizardLogica = (function () {
   // ── Stap 6: aandrijving ──────────────────────────────────────────────────
   function stap6(tak) {
     var toelichting = tak === 'trapezium'
-      ? 'Omdat het aandrijfkoppel omgekeerd evenredig is met het rendement, vraagt een ' +
-        'enkelgangige trapeziumspindel (η ≈ 0,3) ongeveer driemaal zoveel koppel als een ' +
-        'kogelomloopspindel (η ≈ 0,9), en een meergangige (η ≈ 0,5) ongeveer 1,8 maal.'
+      ? 'Het aandrijfkoppel is omgekeerd evenredig met het rendement. Een enkelgangige ' +
+        'trapeziumspindel (η ≈ 0,3) vraagt daardoor ongeveer driemaal zoveel koppel als een ' +
+        'kogelomloopspindel (η ≈ 0,9), een meergangige (η ≈ 0,5) ongeveer 1,8 maal zoveel.'
       : tak === 'draadspindel'
       ? 'Het rendement hangt af van diameter, spoed en coating (circa 20–85%); bij de spelingsvrije ' +
         'moer komt er een klein sleepkoppel bij. De catalogus adviseert een motor die 1,5 à 2 keer ' +
         'het berekende koppel levert.'
-      : 'Het hoge rendement (circa 90%) houdt de benodigde koppel- en motorbehoefte laag.';
+      : 'Door het hoge rendement (circa 90%) blijven het benodigde koppel en motorvermogen laag.';
     return {
       nummer: 6,
       titel: 'Aandrijving',
@@ -6038,7 +6037,7 @@ var WizardLogica = (function () {
           tekst: 'Type aandrijving',
           opties: [
             optie('direct', 'Direct gekoppeld', 'Geen reductie'),
-            optie('reductie', 'Via reductie/tandwielkast', null),
+            optie('reductie', 'Via reductie of tandwielkast', null),
             optie('riem', 'Via riem-/poelie-overbrenging', null),
             optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren')
           ]
@@ -6063,7 +6062,7 @@ var WizardLogica = (function () {
           opties: [
             optie('vast', 'Aan de vastlagerzijde', 'Vaste tap met aandrijfeinde'),
             optie('los', 'Aan de loslagerzijde', 'Zwevende tap met aandrijfeinde'),
-            optie('weetniet', 'Weet ik niet', 'Dan aan de vastlagerzijde')
+            optie('weetniet', 'Weet ik niet', 'De tool kiest dan de vastlagerzijde')
           ]
         })
       ] : [])
@@ -6075,7 +6074,7 @@ var WizardLogica = (function () {
     return {
       nummer: 7,
       titel: 'Toebehoren en bewerking',
-      toelichting: 'De aangeboden lagerunits volgen straks in de configurator automatisch ' +
+      toelichting: 'Welke lagerunits u kunt kiezen, volgt in de configurator ' +
         'uit de gekozen diameter.',
       vragen: [
         vraag({
@@ -6128,7 +6127,7 @@ var WizardLogica = (function () {
     return {
       nummer: 8,
       titel: 'Resultaat en advies',
-      toelichting: 'Op basis van uw antwoorden. U kunt alles nog aanpassen in de configurator.',
+      toelichting: 'Dit advies volgt uit uw antwoorden. In de configurator kunt u alles nog aanpassen.',
       vragen: []
     };
   }
@@ -6468,7 +6467,7 @@ var WizardLogica = (function () {
     overspanningMm: 'Overgenomen uit uw antwoord over de overspanning of de slag (de grootste van de twee).',
     lagering: overgenomen('de lagerconfiguratie'),
     moermateriaal: overgenomen('het moermateriaal'),
-    bedrijf: overgenomen('het bedrijf (gebruiksintensiteit)'),
+    bedrijf: overgenomen('hoe vaak de spindel in bedrijf is'),
     orientatie: overgenomen('de inbouwrichting'),
     smering: overgenomen('de smering'),
     belastingsaart: overgenomen('de belastingsaart'),
@@ -6495,7 +6494,13 @@ var WizardLogica = (function () {
   // wijst terug naar de ontbrekende stap, in plaats van hem hier stil te
   // slikken: zie de globale randvoorwaarde over invoervalidatie.
   function naarConfiguratie(a) {
-    var advies = Advies.kies(naarAdviesInvoer(a, a.type));
+    var invoer = naarAdviesInvoer(a, a.type);
+    // v1.41: zonder kracht én zonder gewicht zag de klant de technische
+    // melding "krachtN moet positief zijn, kreeg undefined". Nu in gewone taal.
+    if (invoer.krachtN === undefined) {
+      throw new Error('Vul bij stap 4 een gewicht of een axiale kracht in; daarmee kiest de tool de maat');
+    }
+    var advies = Advies.kies(invoer);
     if (!advies.maat) return { type: a.type, advies: advies };
 
     var cfg = {
@@ -6632,8 +6637,8 @@ var WizardLogica = (function () {
         // `ontbrekend` dan) en blijft die tekst zoals hij is.
         if (ConfiguratorLogica.lagerunitBeschikbaar(cfg.d)) {
           cfg.lagerunitMelding += ontbrekend.length === 1
-            ? ' Die zijde is daarom zonder bewerking ("0").'
-            : ' Die zijden zijn daarom zonder bewerking ("0").';
+            ? ' Die zijde blijft daarom onbewerkt ("0").'
+            : ' Die zijden blijven daarom onbewerkt ("0").';
         }
       }
     }
@@ -6733,7 +6738,7 @@ var Offerte = (function () {
 
   // Draadspindel (spec 2026-09-25 §9): moer, aseinden en coating voluit, zodat
   // Sales 'BLB' of 'UCF' niet hoeft te ontcijferen.
-  var DS_COATING_TEKST = { T: 'T — PTFE-coating', U: 'U — ongecoat' };
+  var DS_COATING_TEKST = { T: 'T – PTFE-coating', U: 'U – ongecoat' };
 
   function draadspindelWaarde(sleutel, waarde, cfg) {
     // Spec 2026-10-02-lead-screw-gerold-miniatuur-ontwerp §2: de typewaarde
@@ -6744,7 +6749,7 @@ var Offerte = (function () {
     }
     if (sleutel === 'moertype') {
       var moer = Catalogus.draadspindel.moertypen.filter(function (m) { return m.code === waarde; })[0];
-      return moer ? waarde + ' — ' + moer.naam : waarde;
+      return moer ? waarde + ' – ' + moer.naam : waarde;
     }
     if (sleutel === 'draadCoating') return DS_COATING_TEKST[waarde] || waarde;
     return waarde;
@@ -6791,7 +6796,7 @@ var Offerte = (function () {
   };
   var VOORSELECTIE_WAARDEN = {
     ja: 'ja', nee: 'nee', weetniet: 'weet ik niet', geen: 'geen',
-    direct: 'direct gekoppeld', reductie: 'via reductie/tandwielkast', riem: 'via riemoverbrenging',
+    direct: 'direct gekoppeld', reductie: 'via reductie of tandwielkast', riem: 'via riemoverbrenging',
     servo: 'servomotor', stappen: 'stappenmotor', onbekend: 'nog niet bekend',
     beide: 'vast + los lager', vastalleen: 'alleen vastlager',
     standaard: 'standaard maatvoering', tekening: 'op eigen tekening',
@@ -6988,7 +6993,7 @@ var Offerte = (function () {
       var metDruk = typeof grenzen.vlaktedruk === 'number';
       regels.push('Glijsnelheid: ' + fmt(grenzen.glijsnelheid, 2) + ' m/s (grens' +
         (metDruk ? ' bij deze vlaktedruk' : '') + ': ' +
-        (metDruk && grenzen.vgMax === 0 ? 'geen — de vlaktedruk is te hoog'
+        (metDruk && grenzen.vgMax === 0 ? 'geen, de vlaktedruk is te hoog'
           : fmt(grenzen.vgMax, metDruk ? 1 : 2) + ' m/s') + ', ' +
         (grenzen.glijsnelheidOk ? 'voldoet' : 'grens overschreden') + ')');
       // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35).
@@ -7000,7 +7005,7 @@ var Offerte = (function () {
       }
       if (typeof grenzen.edMax === 'number') {
         regels.push('Toelaatbare inschakelduur: ' + grenzen.edMax + ' % (PV-waarde ' + fmt(grenzen.pvWaarde, 0) +
-          ' N/mm²·m/min, f_i ' + fmt(grenzen.fi, 2) + ') — ' + grenzen.edSmering);
+          ' N/mm²·m/min, f_i ' + fmt(grenzen.fi, 2) + '); ' + grenzen.edSmering);
       }
       // Niet elke trapeziummaat staat in de BFM-draaggetaltabel (bijv.
       // Tr 48x8, zie het catalogus-blok): zonder bekend draaggetal blijft
@@ -7035,9 +7040,9 @@ var Offerte = (function () {
     if (typeof grenzen.fout === 'string' && grenzen.fout) {
       var nietDoorgerekend = /nog niet doorgerekend/i.test(grenzen.fout);
       var melding = nietDoorgerekend
-        ? 'Deze maat kan niet automatisch worden doorgerekend: ' + grenzen.fout + '. ' +
-          'Een engineer bij MCA moet dit handmatig controleren voordat deze aanvraag wordt bevestigd.'
-        : 'De doorgerekende grenzen konden niet worden meegestuurd — de opgegeven belasting ' +
+        ? 'De tool kan deze maat niet automatisch doorrekenen: ' + grenzen.fout + '. ' +
+          'Een engineer van MCA moet dit handmatig controleren voordat MCA deze aanvraag bevestigt.'
+        : 'De doorgerekende grenzen zijn niet meegestuurd, want de opgegeven belasting ' +
           'is (nog) niet volledig of niet geldig: ' + grenzen.fout + '.';
       return ['DOORGEREKENDE GRENZEN', melding];
     }
@@ -7063,7 +7068,7 @@ var Offerte = (function () {
     regels.push('Bestelcode: ' + resultaat.code);
     regels.push(AANVRAAGREFERENTIE);
     if (resultaat.opAanvraag) {
-      regels.push('Let op: deze maat valt buiten de standaardcodering — op aanvraag.');
+      regels.push('Let op: deze maat valt buiten de standaardcodering en is op aanvraag.');
     }
 
     // F1 (eindreview): de configurator vraagt de werktemperatuur niet (spec
@@ -7115,7 +7120,7 @@ var Offerte = (function () {
     // "gewoon advies" (feedback opdrachtgever 01-10-2026 punt 2).
     if (cfg.klasse === 'P3' || cfg.klasse === 'P5') {
       regels.push('Voor klasse P3 en P5 bepalen de product engineers van MCA de spindeloplossing; ' +
-        'uw aanvraag wordt door hen beoordeeld.');
+        'zij beoordelen uw aanvraag.');
     }
 
     var toepassingRegels = sectieRegels('TOEPASSING', TOEPASSING_LABELS, cfg.toepassing, TOEPASSING_EENHEID, null);
@@ -7141,7 +7146,7 @@ var Offerte = (function () {
       regels.push('');
       regels.push('BIJLAGE');
       regels.push('Er hoort een tekening bij deze aanvraag: ' + cfg.tekeningNaam);
-      regels.push('Voeg dat bestand zelf toe aan deze e-mail — een aanvraag vanuit');
+      regels.push('Voeg dat bestand zelf toe aan deze e-mail: een aanvraag vanuit');
       regels.push('de configurator kan de bijlage niet automatisch meesturen.');
     }
 
@@ -7166,7 +7171,7 @@ var Offerte = (function () {
 
   function mailtoUrl(cfg, contact) {
     var gebouwd = bouwSamenvatting(cfg, contact);
-    var onderwerp = 'Offerteaanvraag spindel — ' + gebouwd.resultaat.code;
+    var onderwerp = 'Offerteaanvraag spindel: ' + gebouwd.resultaat.code;
     return 'mailto:' + ONTVANGER +
       '?subject=' + encodeURIComponent(onderwerp) +
       '&body=' + encodeURIComponent(gebouwd.tekst);
@@ -7265,7 +7270,7 @@ var Offerte = (function () {
   // TOEPASSING_LABELS zelf aan te passen (dat zou de gewone offerte raken).
   var TYPE_WAARDEN = {
     kogelomloop: 'Kogelomloopspindel', trapezium: 'Trapeziumspindel',
-    draadspindel: 'Lead screw', 'weet-niet': 'Weet ik niet (volgt de kogelomloop-route)'
+    draadspindel: 'Lead screw', 'weet-niet': 'Weet ik niet (wizard ging uit van kogelomloop)'
   };
   var TOEPASSING_LABELS_ADVIES = Object.assign({ type: 'Spindeltype' }, TOEPASSING_LABELS);
 
@@ -7336,10 +7341,10 @@ var Offerte = (function () {
   function adviesaanvraagMailtoUrl(antwoorden, voorgesteld, reden) {
     var zonderSmering = reden === 'smering';
     var onderwerp = zonderSmering
-      ? 'Adviesaanvraag spindel — zonder smering'
+      ? 'Adviesaanvraag spindel: zonder smering'
       : voorgesteld
-      ? 'Adviesaanvraag kogelomloopspindel — miniatuur'
-      : 'Adviesaanvraag kogelomloopspindel — hoge nauwkeurigheid';
+      ? 'Adviesaanvraag kogelomloopspindel: miniatuur'
+      : 'Adviesaanvraag kogelomloopspindel: hoge nauwkeurigheid';
     var regels = zonderSmering
       ? ['De klant geeft op dat de spindel zonder smering loopt. Zonder smering geeft de tool geen ' +
           'advies: de product engineers van MCA bepalen samen met de klant de juiste oplossing.']
@@ -8139,12 +8144,12 @@ var Afbeeldingen = (function () {
     type: { kogelomloop: 'Kogelomloopspindel', trapezium: 'Trapeziumspindel', draadspindel: 'Lead screw' },
     // Spec 2026-09-30-miniatuurreeks §4: labels letterlijk uit het ontwerp.
     reeks: { standaard: 'Standaard', miniatuur: 'Miniatuur (MBS)' },
-    draadCoating: { T: 'T — PTFE-coating', U: 'U — ongecoat' },
-    voorspanning: { S: 'S — met axiaalspeling', A: 'A — spelingsvrij' },
+    draadCoating: { T: 'T – PTFE-coating', U: 'U – ongecoat' },
+    voorspanning: { S: 'S – met axiaalspeling', A: 'A – spelingsvrij' },
     klasse: { P3: 'P3', P5: 'P5', T7: 'T7 (standaard)' },
     materiaal: { staal: 'Staal', rvs: 'RVS' },
     coating: { '': 'Geen', FCR: 'FCR-coating' },
-    materiaalMoer: { A: 'A — CuSn7ZnPb brons', C: 'C — kunststof', D: 'D — RVS 304', E: 'E — RVS 316' },
+    materiaalMoer: { A: 'A – CuSn7ZnPb brons', C: 'C – kunststof', D: 'D – RVS 304', E: 'E – RVS 316' },
     koppeling: { nee: 'Nee', ja: 'Ja' }
   };
 
@@ -8221,7 +8226,7 @@ var Afbeeldingen = (function () {
   // Rekenkern.LAGERFACTOR-sleutel kunnen benoemen die niet meer bestaat.
   function leesbareLagering(sleutel) {
     var delen = String(sleutel).split('-');
-    return delen[0].charAt(0).toUpperCase() + delen[0].slice(1) + ' — ' + delen.slice(1).join('-');
+    return delen[0].charAt(0).toUpperCase() + delen[0].slice(1) + ' – ' + delen.slice(1).join('-');
   }
 
   // Leeg bij opbouw; vulAstapOpties() vult ze zodra de diameter bekend is —
@@ -8478,7 +8483,7 @@ var Afbeeldingen = (function () {
   // verborgen) — alleen bestaat #invoer-klasse enkel bij kogelomloop
   // (ALLEEN_KOGEL), vandaar de guard op het ontbreken van de select/uitleg.
   var KLASSE_TOELICHTING_TEKST = 'Voor klasse P3 en P5 bepalen de product engineers van MCA de ' +
-    'spindeloplossing; uw aanvraag wordt door hen beoordeeld.';
+    'spindeloplossing; zij beoordelen uw aanvraag.';
   function vulKlasseToelichting() {
     var select = document.getElementById('invoer-klasse');
     var uitleg = document.getElementById('toelichting-klasse');
@@ -8837,7 +8842,7 @@ var Afbeeldingen = (function () {
     var regels = [];
     if (maatFout) regels.push('Maatvoering niet beschikbaar: ' + maatFout);
     if (maten) regels = regels.concat(maten.meldingen);
-    regels.push('Tekening niet op schaal — maten in mm.');
+    regels.push('Tekening niet op schaal, maten in mm.');
     regels.forEach(function (tekst) {
       var regel = document.createElement('p');
       regel.className = 'toelichting';
@@ -8877,13 +8882,13 @@ var Afbeeldingen = (function () {
   function voegTrapeziumDrukToe(inhoud, r) {
     inhoud.appendChild(regelMetIcoon(
       'Glijsnelheid: ' + fmt(r.glijsnelheid, 2) + ' m/s (grens bij deze vlaktedruk: ' +
-      (r.vgMax > 0 ? fmt(r.vgMax, 1) + ' m/s' : 'geen — de vlaktedruk is te hoog') + ')', r.glijsnelheidOk));
+      (r.vgMax > 0 ? fmt(r.vgMax, 1) + ' m/s' : 'geen, de vlaktedruk is te hoog') + ')', r.glijsnelheidOk));
     inhoud.appendChild(regelMetIcoon(
       'Vlaktedruk moer (' + fmt(r.moerlengte, 0) + ' mm): ' + fmt(r.vlaktedruk, 2) + ' N/mm² (toelaatbaar bij ' +
       fmt(r.vgTabel, 1) + ' m/s: ' + fmt(r.pMax, 1) + ' N/mm²; veiligheid ' + fmt(r.veiligheidVlaktedruk, 2) + ')',
       r.vlaktedrukOk));
     inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (PV-waarde ' + fmt(r.pvWaarde, 0) +
-      ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + ') — ' + r.edSmering));
+      ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
   }
 
   function voegTrapeziumKnikToe(inhoud, r) {
@@ -8963,7 +8968,7 @@ var Afbeeldingen = (function () {
         'diameter, spoed en coating. De catalogus adviseert een motor die 1,5 à 2 keer het berekende ' +
         'koppel levert.'));
     } else {
-      grenzenTitel.textContent = 'Trapezium-kenmerken';
+      grenzenTitel.textContent = 'Trapeziumkenmerken';
       // Spec 2026-10-05-knik-trapezium §2 (v1.24): knik en toerental zoals
       // bij kogelomloop; krachtOk is hier de draaggetaltoets, dus knikOk.
       voegTrapeziumKnikToe(grenzenInhoud, resultaat);
@@ -8985,9 +8990,8 @@ var Afbeeldingen = (function () {
       koppelInhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(resultaat.motorvermogenAanbevolen, 3) +
         ' kW (minimaal ' + fmt(resultaat.motorvermogenMinimum, 3) + ' kW)'));
       koppelInhoud.appendChild(toelichting(
-        'Het koppel hierboven is gerekend met een stroeve wrijvingsaanname (hoge µ); de ' +
-        'zelfremklasse met een soepele (lage µ) — dezelfde asymmetrie als in de rekenkern, ' +
-        'zodat geen van beide uitkomsten optimistischer is dan verantwoord.'));
+        'Het koppel hierboven is gerekend met een hoge wrijving (hoge µ), de zelfremklasse ' +
+        'met een lage wrijving (lage µ). Zo valt geen van beide uitkomsten te gunstig uit.'));
     }
     // Teruggegeven zodat toonRemWaarschuwing() de berekende zelfremklasse kan
     // gebruiken zonder een tweede keer door te rekenen.
@@ -9400,7 +9404,7 @@ var Afbeeldingen = (function () {
       if (url.length > MAILTO_VEILIGE_LENGTE) {
         offerteLengteTekst.textContent = 'Deze aanvraag is lang (' + url.length + ' tekens in de e-maillink). ' +
           'Sommige e-mailprogramma\'s kappen een lange mailto-link af, waardoor een deel van de tekst niet aankomt. ' +
-          'Kopieer voor de zekerheid de volledige tekst hierboven en plak die zelf in de e-mail als u merkt dat er iets ontbreekt.';
+          'Ontbreekt er iets in de e-mail? Kopieer dan de volledige tekst hierboven en plak die zelf in de e-mail.';
         offerteLengteKaart.hidden = false;
       } else {
         offerteLengteKaart.hidden = true;
@@ -9593,7 +9597,7 @@ var Afbeeldingen = (function () {
     configuratorView.hidden = isWizard;
     actiesWizard.hidden = !isWizard;
     actiesConfigurator.hidden = isWizard;
-    schermTitelEl.textContent = isWizard ? 'Spindel Voorselectie' : 'Spindel Configurator';
+    schermTitelEl.textContent = isWizard ? 'Spindel voorselectie' : 'Spindel configurator';
     window.scrollTo({ top: 0, behavior: 'smooth' });
     var kop = document.getElementById(isWizard ? 'wizardKop' : 'configuratorKop');
     if (kop) kop.focus();
@@ -9723,7 +9727,7 @@ var Afbeeldingen = (function () {
       wizRenderStap();
     });
     label.appendChild(vink);
-    label.appendChild(document.createTextNode('Weet ik nog niet — de tool rekent met minimaal 10.000 bedrijfsuren'));
+    label.appendChild(document.createTextNode('Weet ik nog niet (de tool rekent met minimaal 10.000 bedrijfsuren)'));
     wrapper.appendChild(label);
     return wrapper;
   }
@@ -10001,7 +10005,7 @@ var Afbeeldingen = (function () {
         ? 'De opgegeven werktemperatuur valt buiten het bereik van een lead screw (0–82 °C).'
         : 'Geen enkele lead screw haalt deze combinatie van kracht, snelheid en vrije lengte.';
       inhoud.appendChild(wizAlert(dsReden +
-        ' Hieronder het alternatief dat de wizard dan adviseert.', 'info'));
+        ' Hieronder ziet u het alternatief dat de wizard adviseert.', 'info'));
     }
 
     if (advies) {
@@ -10017,7 +10021,7 @@ var Afbeeldingen = (function () {
           'getoonde ' + (advies.draadspindelAfgevallen ? 'lead screw' : 'kogelomloopspindel') + ': ' +
           advies.redenen.join('; ') + '.';
         if (advies.maat) {
-          tekst += ' Bijvoorbeeld maat ' + advies.maat.code + ' zou hier voldoen.';
+          tekst += ' Maat ' + advies.maat.code + ' voldoet hier bijvoorbeeld.';
         } else if (advies.voorwaarde) {
           var vMaxMs = Math.floor(advies.voorwaarde.vMaxMmPerSec / 10) / 100;
           tekst += ' Let op: dat kan alleen als de snelheid omlaag gaat naar maximaal ' +
@@ -10220,7 +10224,7 @@ var Afbeeldingen = (function () {
       peInhoud.className = 'kaart-inhoud';
       peInhoud.appendChild(Object.assign(document.createElement('p'), {
         textContent: 'U geeft op dat de spindel zonder smering loopt. Daarvoor adviseert de tool geen ' +
-          'spindel: de product engineers van MCA nemen contact met u op.'
+          'spindel. Stuur met de knop hieronder uw gegevens naar de product engineers van MCA; zij nemen dan contact met u op.'
       }));
       var peKnop = document.createElement('button');
       peKnop.type = 'button';
@@ -10340,7 +10344,7 @@ var Afbeeldingen = (function () {
       kaart.className = 'kaart';
       var kop = document.createElement('div');
       kop.className = 'kaart-kop';
-      kop.textContent = 'Advies overzicht';
+      kop.textContent = 'Adviesoverzicht';
       kaart.appendChild(kop);
 
       var inhoud = document.createElement('div');
@@ -10357,7 +10361,7 @@ var Afbeeldingen = (function () {
       }
       rij('Type', { kogelomloop: 'Kogelomloopspindel', trapezium: 'Trapeziumspindel',
         draadspindel: 'Lead screw' }[cfg.type]);
-      rij('Maatvoering', 'Ø' + cfg.d + ' × spoed ' + cfg.P + ' mm');
+      rij('Maatvoering', 'Ø' + cfg.d + ' × spoed ' + String(cfg.P).replace('.', ',') + ' mm');
       // Fabricage (gerold/gewerveld/geslepen) en lagerconfiguratie zaten al in de
       // doorrekening (resp. de klasse-afleiding en Rekenkern.knik/
       // kritischToerental) en in de bestelcode, maar stonden nergens in dit
@@ -10365,7 +10369,7 @@ var Afbeeldingen = (function () {
       rij('Fabricage', cfg.fabricage.charAt(0).toUpperCase() + cfg.fabricage.slice(1));
       if (cfg.type === 'kogelomloop') {
         rij('Precisieklasse', cfg.klasse);
-        rij('Voorspanning', cfg.voorspanning === 'S' ? 'S — axiaalspeling' : 'A — spelingsvrij');
+        rij('Voorspanning', cfg.voorspanning === 'S' ? 'S – met axiaalspeling' : 'A – spelingsvrij');
         rij('Materiaal', cfg.materiaal === 'rvs' ? 'RVS' : 'Staal');
       } else if (cfg.type === 'draadspindel') {
         rij('Materiaal spindel', 'RVS 300-serie');
@@ -10417,7 +10421,7 @@ var Afbeeldingen = (function () {
         grenzenKaart.className = 'kaart';
         var grenzenKop = document.createElement('div');
         grenzenKop.className = 'kaart-kop';
-        grenzenKop.textContent = check.type === 'trapezium' ? 'Trapezium-kenmerken' : 'Doorgerekende grenzen';
+        grenzenKop.textContent = check.type === 'trapezium' ? 'Trapeziumkenmerken' : 'Doorgerekende grenzen';
         grenzenKaart.appendChild(grenzenKop);
         var grenzenInhoud = document.createElement('div');
         grenzenInhoud.className = 'kaart-inhoud';
@@ -10509,11 +10513,11 @@ var Afbeeldingen = (function () {
     }
     if (!vraagtEngineering && !miniatuurAdvies && configuratorBezocht) {
       resultaatDiv.appendChild(toelichting(toonOverzicht
-        ? 'Let op: "Kies deze en start de configurator" bouwt de configuratie opnieuw op uit je ' +
-          'antwoorden; wijzigingen die je in de configurator maakte, vervallen. Met "Terug naar ' +
+        ? 'Let op: "Kies deze en start de configurator" bouwt de configuratie opnieuw op uit uw ' +
+          'antwoorden; wijzigingen die u in de configurator maakte, vervallen. Met "Terug naar ' +
           'vorige configuratie" blijven ze staan.'
         : 'Let op: "Start configurator" bouwt de configuratie opnieuw op ' +
-          'uit je antwoorden; wijzigingen die je in de configurator maakte, vervallen.'));
+          'uit uw antwoorden; wijzigingen die u in de configurator maakte, vervallen.'));
     }
     resultaatDiv.appendChild(acties);
     wizContainer.appendChild(resultaatDiv);
