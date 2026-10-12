@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.44  12-10-2026  FB-007: slag in de configurator; de totaallengte volgt de slag, met een melding als de slag niet past
   1.43  12-10-2026  FB-006: overspanning tussen de lagers volgt de totaallengte min de astappen
   1.42  12-10-2026  FB-005: configurator in drie kolommen op brede schermen; uitkomsten blijven in beeld bij scrollen
   1.41  12-10-2026  Zichtbare teksten nagelopen (u-vorm, geen gedachtestreepjes, korter en actiever); begrijpelijke melding zonder kracht en gewicht
@@ -420,7 +421,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.43 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.44 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2197,6 +2198,9 @@ var ConfiguratorLogica = (function () {
     // trapezium knik en kritisch toerental (spec 2026-10-05-knik-trapezium-
     // en-fabricageteksten-ontwerp §2).
     { naam: 'overspanningMm',   label: 'Overspanning tussen lagers (mm)', zichtbaar: BEIDE, opties: null },
+    // FB-007 (v1.44): de slag uit de voorselectie, aan te passen. Optioneel;
+    // de doorrekening gebruikt hem niet, de lengte volgt hem (zie ui-blok).
+    { naam: 'slagMm',           label: 'Slag (mm, optioneel)',            zichtbaar: BEIDE, opties: null },
     // opties wordt hieronder in belastingVelden() gevuld vanuit
     // Rekenkern.LAGERFACTOR: die is nog niet geladen op het moment dat dit
     // array-literal wordt gebouwd (dit blok staat vóór rekenkern), maar wél
@@ -2662,6 +2666,35 @@ var ConfiguratorLogica = (function () {
     return Catalogus.astapMaten(parsed.code, parsed.maat, parsed.uitvoering).lengte;
   }
 
+  // Lengte van de moer in mm; 0 bij een moer zonder catalogusmaten (op
+  // aanvraag): dan telt alleen de slag en meldt de maatvoering de
+  // ontbrekende maten zelf. Ook gebruikt door WizardLogica.totaalLengte().
+  function moerLengte(cfg) {
+    if (cfg.type === 'draadspindel') return Catalogus.draadspindel.moerMaten(cfg.moertype, cfg.d).lengte;
+    var m = Catalogus.moerMaten(cfg.type, cfg.moertype, cfg.d, cfg.P, cfg.draadrichting);
+    return m ? m.lengte : 0;
+  }
+
+  // FB-007 (v1.44): de totaallengte bij een slag, zoals de wizard hem
+  // opbouwt: slag + moerlengte + beide astappen, naar boven afgerond.
+  function lengteUitSlag(cfg, slagMm) {
+    return Math.ceil(slagMm + moerLengte(cfg) + astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
+  }
+
+  // FB-007 (v1.44): past de slag met de moer tussen de lagers? Zo niet, dan
+  // een melding met de grootste slag die bij deze overspanning past.
+  function slagMelding(cfg, slagMm, overspanningMm) {
+    if (!(slagMm > 0) || !(overspanningMm > 0)) return null;
+    var moer = moerLengte(cfg);
+    var max = overspanningMm - moer;
+    if (slagMm <= max) return null;
+    return max > 0
+      ? 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte is de slag maximaal ' +
+        Math.floor(max) + ' mm (overspanning ' + Math.round(overspanningMm) + ' mm min de moer van ' +
+        Math.round(moer) + ' mm).'
+      : 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte past de moer niet tussen de lagers.';
+  }
+
   // FB-006 (v1.43): de overspanning tussen de lagers volgt in de configurator
   // de totaallengte, zoals de wizard de totaallengte uit de overspanning
   // opbouwt: totaallengte min de twee astappen. null als er dan niets
@@ -2674,6 +2707,9 @@ var ConfiguratorLogica = (function () {
   return {
     VERSIE: '1.0',
     astapLengte: astapLengte,
+    moerLengte: moerLengte,
+    lengteUitSlag: lengteUitSlag,
+    slagMelding: slagMelding,
     overspanningUitLengte: overspanningUitLengte,
     velden: velden,
     spoedenVoor: spoedenVoor,
@@ -6329,13 +6365,7 @@ var WizardLogica = (function () {
   // rekent er de overspanning mee terug uit de totaallengte (FB-006).
   var astapLengte = ConfiguratorLogica.astapLengte;
 
-  function moerLengte(cfg) {
-    if (cfg.type === 'draadspindel') return Catalogus.draadspindel.moerMaten(cfg.moertype, cfg.d).lengte;
-    // Moer zonder catalogusmaten (op aanvraag): lengte onbekend, dan telt
-    // alleen de slag; de maatvoering meldt de ontbrekende moermaten zelf.
-    var m = Catalogus.moerMaten(cfg.type, cfg.moertype, cfg.d, cfg.P, cfg.draadrichting);
-    return m ? m.lengte : 0;
-  }
+  var moerLengte = ConfiguratorLogica.moerLengte;
 
   function totaalLengte(a, cfg) {
     var o = ontbreekt(a.overspanning) ? 0 : a.overspanning;
@@ -6438,6 +6468,8 @@ var WizardLogica = (function () {
       // v1.37 (FB-002): meldingen over beweging en kracht, Advies.kies() toont ze.
       bewegingMeldingen: controle.meldingen,
       overspanningMm: vrijeLengte(a),
+      // FB-007 (v1.44): de configurator toont de slag; leeg blijft leeg.
+      slagMm: ontbreekt(a.slag) ? undefined : a.slag,
       lagering: (ontbreekt(a.lagering) || a.lagering === 'weetniet') ? 'vast-los' : a.lagering,
       verticaal: nietHorizontaal,
       moermateriaal: ontbreekt(a.moermateriaal) ? 'brons' : a.moermateriaal,
@@ -6504,6 +6536,7 @@ var WizardLogica = (function () {
     krachtN: 'Overgenomen uit uw antwoord, of berekend uit gewicht, geleiding en versnelling.',
     snelheidMmPerSec: overgenomen('de gevraagde snelheid'),
     overspanningMm: 'Overgenomen uit uw antwoord over de overspanning of de slag (de grootste van de twee).',
+    slagMm: overgenomen('de slag'),
     lagering: overgenomen('de lagerconfiguratie'),
     moermateriaal: overgenomen('het moermateriaal'),
     bedrijf: overgenomen('hoe vaak de spindel in bedrijf is'),
@@ -6802,7 +6835,7 @@ var Offerte = (function () {
   // Sales moermateriaal, bedrijf, overspanning, snelheid en oriëntatie.
   var TOEPASSING_LABELS = {
     krachtN: 'Axiale kracht', snelheidMmPerSec: 'Gevraagde snelheid',
-    overspanningMm: 'Overspanning tussen lagers', lagering: 'Lagerconfiguratie',
+    overspanningMm: 'Overspanning tussen lagers', slagMm: 'Slag', lagering: 'Lagerconfiguratie',
     moermateriaal: 'Moermateriaal (doorrekening)', bedrijf: 'Bedrijf', orientatie: 'Inbouw',
     // Spec 2026-10-05-levensduur-statisch-ontwerp §5 (v1.20), alleen kogelomloop.
     urenPerDag: 'Bedrijfsuren per dag', dagenPerWeek: 'Aantal dagen per week',
@@ -6811,7 +6844,7 @@ var Offerte = (function () {
     // v1.35 (spec 2026-10-09-trapezium-mcalc §2.2/§2.4).
     belastingsaart: 'Belastingsaart', smering: 'Smering'
   };
-  var TOEPASSING_EENHEID = { krachtN: ' N', snelheidMmPerSec: ' mm/s', overspanningMm: ' mm',
+  var TOEPASSING_EENHEID = { krachtN: ' N', snelheidMmPerSec: ' mm/s', overspanningMm: ' mm', slagMm: ' mm',
     urenPerDag: ' uur/dag', dagenPerWeek: ' dag/week', wekenPerJaar: ' week/jaar', jaren: ' jaar' };
 
   // B8 — vijf wizardvragen (spelingsvrij, cyclus, aandrijving, motor,
@@ -8682,6 +8715,14 @@ var Afbeeldingen = (function () {
       var invoer = wrapper.querySelector('select,input');
       var huidig = waarden[veld.naam];
       if (huidig !== undefined) invoer.value = String(huidig);
+      if (veld.naam === 'slagMm') {
+        var slagMelding = document.createElement('p');
+        slagMelding.className = 'melding kritiek';
+        slagMelding.id = 'slagMelding';
+        slagMelding.hidden = true;
+        slagMelding.style.marginTop = '6px';
+        wrapper.appendChild(slagMelding);
+      }
       belastingContainer.appendChild(wrapper);
     });
   }
@@ -8748,7 +8789,8 @@ var Afbeeldingen = (function () {
         // De bedrijfsurenvelden mogen leeg blijven (dan geldt het minimum van
         // 10.000 u): leeg wordt undefined, niet Number('') = 0. Andere
         // getalvelden houden het oude gedrag (leeg → 0 → een duidelijke fout).
-        belasting[veld.naam] = el.value === '' && BEDRIJFSUREN_VELDEN.indexOf(veld.naam) !== -1
+        belasting[veld.naam] = el.value === '' &&
+          (BEDRIJFSUREN_VELDEN.indexOf(veld.naam) !== -1 || veld.naam === 'slagMm')
           ? undefined : Number(el.value);
       } else {
         belasting[veld.naam] = el.value;
@@ -9141,6 +9183,7 @@ var Afbeeldingen = (function () {
       belasting = null;
     }
     huidigeBelasting = belasting;
+    werkSlagMeldingBij(cfg, belasting);
     var doorgerekend = toonGrenzenEnKoppel(cfg, belasting);
     toonRemWaarschuwing(doorgerekend);
   }
@@ -9191,6 +9234,31 @@ var Afbeeldingen = (function () {
   // nog zelf aanpassen; het herkomstlabel van de wizard vervalt.
   var VELDEN_VOOR_OVERSPANNING = ['invoer-lengte', 'invoer-astap1', 'invoer-astap2',
     'invoer-d', 'invoer-maat', 'invoer-reeks'];
+
+  // FB-007 (v1.44): verandert de klant de slag, dan wordt de totaallengte
+  // slag + moerlengte + astappen (zoals in de wizard) en volgt de overspanning.
+  function lengteVolgtSlag() {
+    var slagEl = document.getElementById('belasting-slagMm');
+    var lengteEl = document.getElementById('invoer-lengte');
+    var slag = slagEl ? Number(slagEl.value) : NaN;
+    if (!lengteEl || slagEl.value === '' || !(slag > 0)) return;
+    try {
+      lengteEl.value = String(ConfiguratorLogica.lengteUitSlag(
+        ConfiguratorLogica.normaliseer(lezenRuweConfig()), slag));
+    } catch (fout) {
+      return;
+    }
+    wisHerkomst(huidigeHerkomst, 'lengte', 'herkomst-spec');
+    overspanningVolgtLengte();
+  }
+
+  function werkSlagMeldingBij(cfg, belasting) {
+    var el = document.getElementById('slagMelding');
+    if (!el) return;
+    var tekst = belasting ? ConfiguratorLogica.slagMelding(cfg, belasting.slagMm, belasting.overspanningMm) : null;
+    el.textContent = tekst || '';
+    el.hidden = !tekst;
+  }
 
   function overspanningVolgtLengte() {
     var el = document.getElementById('belasting-overspanningMm');
@@ -9340,6 +9408,7 @@ var Afbeeldingen = (function () {
   belastingContainer.addEventListener('input', function (e) {
     if (e.target.tagName === 'INPUT') {
       wisHerkomst(huidigeBelastingHerkomst, e.target.name, 'herkomst-bel');
+      if (e.target.id === 'belasting-slagMm') lengteVolgtSlag();
       bijwerken();
     }
   });
@@ -10623,6 +10692,8 @@ var Afbeeldingen = (function () {
     // WizardLogica.configuratorBelasting).
     var belasting = WizardLogica.configuratorBelasting(STANDAARD_BELASTING,
       wizBelastingUitAntwoorden(wizAntwoorden));
+    // Geen slag opgegeven: dan ook geen label "overgenomen" bij een leeg veld.
+    if (belasting.slagMm === undefined) delete huidigeBelastingHerkomst.slagMm;
     opnieuwOpbouwen(tak, waarden, belasting);
     toonScherm('configurator');
   }
