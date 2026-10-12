@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.38  12-10-2026  Schema's bij montage-oriëntatie, nauwkeurigheid, type aandrijving, motortype en aandrijfzijde
   1.37  12-10-2026  FB-002 t/m FB-004: beweging (slag, snelheid, versnelling, tijd) met controle en krachtcontrole; schuifbalken bedrijfsuren; lagerschema's
   1.36  09-10-2026  Kritisch toerental trapezium met de lagerfactor f_kb volgens de catalogus (ook vast-los en vast-vast)
   1.35  09-10-2026  Trapezium zoals het rekenprogramma van MCA: vlaktedruk per glijsnelheid, inschakelduur uit PV, kritisch toerental, wrijving per moer; belastingsaart en smering (droog → product engineers)
@@ -396,7 +397,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.37 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.38 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -7462,6 +7463,7 @@ var Afbeeldingen = (function () {
   };
   function voorOptie(sleutel, waarde) {
     if (sleutel === 'lagering') return lagerSchema(waarde);
+    if (SCHEMA_VRAGEN[sleutel]) return SCHEMA_VRAGEN[sleutel](waarde);
     var tabel = WIZARD[sleutel];
     return tabel && tabel[waarde] ? beeld(tabel[waarde]) : null;
   }
@@ -7495,6 +7497,136 @@ var Afbeeldingen = (function () {
       '<text x="150" y="156" text-anchor="middle">moer</text></g></svg>';
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
+
+  // v1.38: schema's bij meer keuzes (verzoek opdrachtgever 12-10-2026, in
+  // de lijn van FB-004). Zelfde stijl en kleuren als de lagerschema's.
+  function svgUri(inhoud) {
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 112">' + inhoud + '</svg>');
+  }
+  function tekst(x, y, woord, anker) {
+    return '<text x="' + x + '" y="' + y + '" text-anchor="' + (anker || 'middle') +
+      '" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="' + SCHEMA_KLEUR.tekst + '">' + woord + '</text>';
+  }
+  function pijl(x1, y1, x2, y2, kleur) {
+    var hoek = Math.atan2(y2 - y1, x2 - x1);
+    var p = function (d) {
+      return (x2 - 10 * Math.cos(hoek + d)).toFixed(1) + ' ' + (y2 - 10 * Math.sin(hoek + d)).toFixed(1);
+    };
+    return '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + ' M' + p(0.45) + ' L' + x2 + ' ' + y2 + ' L' +
+      p(-0.45) + '" fill="none" stroke="' + (kleur || SCHEMA_KLEUR.moer) + '" stroke-width="2.5"/>';
+  }
+  // Spindel (as, moer, lagers aan de uiteinden), gecentreerd op 0,0 en lengte 160.
+  function spindel() {
+    return '<rect x="-80" y="-4" width="160" height="8" rx="2" fill="' + SCHEMA_KLEUR.as + '"/>' +
+      '<rect x="-14" y="-16" width="28" height="32" rx="3" fill="' + SCHEMA_KLEUR.moer + '"/>' +
+      '<rect x="-84" y="-14" width="10" height="28" fill="#fff" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' +
+      '<rect x="74" y="-14" width="10" height="28" fill="#fff" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>';
+  }
+  function motor(x, y, b, h) {
+    return '<rect x="' + x + '" y="' + y + '" width="' + b + '" height="' + h + '" rx="4" fill="' + SCHEMA_KLEUR.moer + '"/>' +
+      '<text x="' + (x + b / 2) + '" y="' + (y + h / 2 + 7) + '" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" ' +
+      'font-size="20" font-weight="bold" fill="#fff">M</text>';
+  }
+
+  // Montage-oriëntatie: de spindel horizontaal, verticaal of schuin, met de
+  // zwaartekracht als pijl naar beneden.
+  function orientatieSchema(waarde) {
+    var hoek = { horizontaal: 0, verticaal: -90, hoek: -30 }[waarde];
+    if (hoek === undefined) return null;
+    var schaal = waarde === 'verticaal' ? 0.55 : (waarde === 'hoek' ? 0.85 : 1);
+    return svgUri('<path d="M20 106 H230" stroke="' + SCHEMA_KLEUR.as + '" stroke-width="2"/>' +
+      '<g transform="translate(125 ' + (waarde === 'horizontaal' ? 70 : 56) + ') rotate(' + hoek + ') scale(' + schaal + ')">' +
+      spindel() + '</g>' + pijl(268, 18, 268, 92, SCHEMA_KLEUR.lager) + tekst(282, 60, 'g', 'start'));
+  }
+
+  // Nauwkeurigheid: de schietschijf. Herhaal = dicht bij elkaar (maar niet
+  // per se op het doel), positie = rond het doel, beide = dicht en op het
+  // doel, geen = verspreid.
+  var NAUWKEURIG_PUNTEN = {
+    herhaal: [[26, -14], [30, -10], [24, -8], [28, -16], [32, -13]],
+    positie: [[-12, 8], [10, -10], [6, 12], [-9, -11], [13, 4]],
+    beide: [[-2, 1], [2, -2], [1, 3], [-3, -2], [3, 1]],
+    geen: [[-30, 18], [26, -24], [8, 30], [-22, -26], [34, 10]]
+  };
+  function nauwkeurigheidSchema(waarde) {
+    var punten = NAUWKEURIG_PUNTEN[waarde];
+    if (!punten) return null;
+    var cx = 150, cy = 56;
+    var ringen = [48, 32, 16].map(function (r) {
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + SCHEMA_KLEUR.as + '" stroke-width="2"/>';
+    }).join('') + '<circle cx="' + cx + '" cy="' + cy + '" r="4" fill="' + SCHEMA_KLEUR.as + '"/>';
+    var stippen = punten.map(function (p) {
+      return '<circle cx="' + (cx + p[0]) + '" cy="' + (cy + p[1]) + '" r="4.5" fill="' + SCHEMA_KLEUR.lager + '"/>';
+    }).join('');
+    return svgUri(ringen + stippen);
+  }
+
+  // Type aandrijving: motor direct op de spindel (koppeling), via een
+  // tandwielkast, of naast de spindel met een riem.
+  function aandrijvingSchema(waarde) {
+    var as = '<rect x="150" y="70" width="140" height="8" rx="2" fill="' + SCHEMA_KLEUR.as + '"/>' +
+      '<rect x="214" y="58" width="24" height="32" rx="3" fill="' + SCHEMA_KLEUR.moer + '"/>';
+    if (waarde === 'direct') {
+      return svgUri(motor(30, 50, 70, 48) + '<rect x="100" y="70" width="50" height="8" fill="' + SCHEMA_KLEUR.as + '"/>' +
+        '<rect x="116" y="62" width="20" height="24" rx="3" fill="#fff" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' +
+        as + tekst(126, 50, 'koppeling'));
+    }
+    if (waarde === 'reductie') {
+      return svgUri(motor(10, 50, 60, 48) + '<rect x="70" y="44" width="60" height="60" rx="4" fill="#fff" stroke="' +
+        SCHEMA_KLEUR.lager + '" stroke-width="2.5"/><circle cx="92" cy="66" r="12" fill="none" stroke="' + SCHEMA_KLEUR.lager +
+        '" stroke-width="2"/><circle cx="110" cy="86" r="8" fill="none" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2"/>' +
+        '<rect x="130" y="70" width="20" height="8" fill="' + SCHEMA_KLEUR.as + '"/>' + as + tekst(100, 30, 'tandwielkast'));
+    }
+    if (waarde === 'riem') {
+      return svgUri(motor(150, 6, 60, 36) + '<circle cx="130" cy="24" r="12" fill="none" stroke="' + SCHEMA_KLEUR.lager +
+        '" stroke-width="2.5"/><circle cx="130" cy="74" r="16" fill="none" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' +
+        '<path d="M118 24 L114 74 M142 24 L146 74" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' +
+        '<rect x="130" y="21" width="20" height="6" fill="' + SCHEMA_KLEUR.as + '"/>' + as + tekst(60, 54, 'riem'));
+    }
+    return null;
+  }
+
+  // Motortype: servo met terugkoppeling (encoder → besturing), stappenmotor
+  // met stappulsen en zonder terugkoppeling.
+  function motorSchema(waarde) {
+    var besturing = '<rect x="20" y="34" width="70" height="44" rx="4" fill="#fff" stroke="' + SCHEMA_KLEUR.moer +
+      '" stroke-width="2.5"/>' + tekst(55, 63, 'sturing');
+    if (waarde === 'servo') {
+      return svgUri(besturing + pijl(90, 46, 176, 46) + motor(180, 30, 70, 48) +
+        '<rect x="250" y="40" width="14" height="28" fill="' + SCHEMA_KLEUR.lager + '"/>' +
+        '<path d="M257 68 V100 H55 V82" fill="none" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' +
+        pijl(55, 92, 55, 80, SCHEMA_KLEUR.lager) + tekst(156, 88, 'terugkoppeling'));
+    }
+    if (waarde === 'stappen') {
+      return svgUri(besturing + pijl(90, 56, 176, 56) + motor(180, 32, 70, 48) +
+        '<path d="M100 40 H108 V24 H118 V40 H128 V24 H138 V40 H148 V24 H158 V40 H166" fill="none" stroke="' +
+        SCHEMA_KLEUR.lager + '" stroke-width="2.5"/>' + tekst(150, 104, 'stappen, geen terugkoppeling'));
+    }
+    return null;
+  }
+
+  // Aandrijfzijde (draadspindel): motor aan het vaste of aan het losse lager.
+  function aandrijfzijdeSchema(waarde) {
+    if (waarde !== 'vast' && waarde !== 'los') return null;
+    var vastLinks = lagerSymbool(64) + lagerSymbool(80);
+    var losRechts = lagerSymbool(212);
+    var as = '<rect x="40" y="92" width="220" height="8" rx="2" fill="' + SCHEMA_KLEUR.as + '"/>' +
+      '<rect x="134" y="74" width="32" height="44" rx="3" fill="' + SCHEMA_KLEUR.moer + '"/>';
+    var m = waarde === 'vast' ? motor(0, 72, 40, 48) : motor(260, 72, 40, 48);
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 58 300 112">' + as + vastLinks + losRechts + m +
+      '<g font-family="Helvetica, Arial, sans-serif" font-size="20" fill="' + SCHEMA_KLEUR.tekst + '">' +
+      '<text x="80" y="156" text-anchor="middle">vast</text><text x="220" y="156" text-anchor="middle">los</text></g></svg>');
+  }
+
+  var SCHEMA_VRAGEN = {
+    orientatie: orientatieSchema,
+    nauwkeurigheid: nauwkeurigheidSchema,
+    aandrijving: aandrijvingSchema,
+    motor: motorSchema,
+    aandrijfzijde: aandrijfzijdeSchema
+  };
 
   // Type spindel ('kogelomloop', 'trapezium', 'draadspindel').
   function voorType(type) { return beeld('type-' + type); }
