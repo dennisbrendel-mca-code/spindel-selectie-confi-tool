@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.40  12-10-2026  Uitleg bij de vraag naar de axiale kracht
   1.39  12-10-2026  Nauwkeurigheid als lineaire schaal in plaats van schietschijf
   1.38  12-10-2026  Schema's bij montage-oriëntatie, nauwkeurigheid, type aandrijving, motortype en aandrijfzijde
   1.37  12-10-2026  FB-002 t/m FB-004: beweging (slag, snelheid, versnelling, tijd) met controle en krachtcontrole; schuifbalken bedrijfsuren; lagerschema's
@@ -398,7 +399,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.39 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.40 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -5802,7 +5803,10 @@ var WizardLogica = (function () {
         tekst: 'Gewenste axiale kracht/belasting (N, optioneel)',
         type: 'getal',
         eenheid: 'N',
-        hint: 'Onbekend? Laat leeg: de tool rekent dan met het gewicht, de geleiding en de versnelling.'
+        // v1.40: korte uitleg wat de axiale kracht is (verzoek opdrachtgever 12-10-2026).
+        hint: 'De kracht in de lengterichting van de spindel die de moer moet leveren, bijvoorbeeld ' +
+          'de perskracht of het gewicht dat omhoog moet. Krachten dwars op de spindel vangt de geleiding op. ' +
+          'Onbekend? Laat leeg: de tool rekent dan met het gewicht, de geleiding en de versnelling.'
       })
     ];
     // Spec 2026-10-09-trapezium-mcalc §2.2/§2.4 (v1.35): smering bij
