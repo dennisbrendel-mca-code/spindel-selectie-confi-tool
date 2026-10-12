@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.45  12-10-2026  Review groep A: advies rekent met slag + moerlengte; typewissel, uitgangspunt zonder passende maat, leesbare foutmeldingen, lengtecontrole, telefoonkopbalk, toetsenbord in de wizard, contrast
   1.44  12-10-2026  FB-007: slag in de configurator; de totaallengte volgt de slag, met een melding als de slag niet past
   1.43  12-10-2026  FB-006: overspanning tussen de lagers volgt de totaallengte min de astappen
   1.42  12-10-2026  FB-005: configurator in drie kolommen op brede schermen; uitkomsten blijven in beeld bij scrollen
@@ -65,7 +66,7 @@
   --robotics: #9fa0d0;
   --offwhite: #f4f6f8;
   --rand:     #dde2ea;
-  --gedempt:  #6b7a99;
+  --gedempt:  #56637f; /* v1.45: was #6b7a99, te weinig contrast (WCAG 4,5:1) */
   --oppervlak:#ffffff;
   --goed:     #1a8754;
   --waarschuwing: #c85a00;
@@ -114,7 +115,13 @@ h1, h2, h3, .kop {
 .topbar .versie {
   font-size: .7rem; letter-spacing: .04em; color: rgba(255,255,255,.55); white-space: nowrap;
 }
-.topbar .acties { display: flex; gap: 8px; flex: none; }
+.topbar .acties { display: flex; gap: 8px; flex: none; flex-wrap: wrap; max-width: 100%; }
+/* v1.45: op een telefoon vielen de knoppen buiten beeld; ze lopen nu door
+   naar een tweede regel, en versie en scheidingsstreep verdwijnen. */
+@media (max-width: 520px) {
+  .topbar .acties { flex: 1 1 100%; }
+  .topbar .versie, .topbar .scheiding { display: none; }
+}
 .topbar .topbar-rechts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .knop {
   font-family: Fugue, 'Barlow Condensed', sans-serif; font-size: .82rem; font-weight: 600;
@@ -206,7 +213,8 @@ h1, h2, h3, .kop {
 /* ── Bestelcode ── */
 .bestelcode-rij { display: flex; align-items: center; gap: 10px; min-width: 0; }
 code.bestelcode {
-  flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-all;
+  /* v1.45: afbreken bij een streepje of spatie, niet midden in een code. */
+  flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: normal;
   font-family: 'Barlow Condensed', Fugue, monospace; font-size: 1rem; font-weight: 700;
   color: var(--motion); background: var(--offwhite); border: 1px solid var(--rand);
   border-radius: 5px; padding: 8px 10px; display: block;
@@ -288,6 +296,7 @@ code.bestelcode {
   border-radius: 8px; background: var(--oppervlak); cursor: pointer; transition: all .15s;
 }
 .wiz-opt:hover { border-color: var(--robotics); }
+.wiz-opt:focus-visible { outline: 2px solid var(--linear); outline-offset: 2px; }
 .wiz-opt.geselecteerd { border-color: var(--linear); background: #fde8f2; box-shadow: 0 0 0 1px var(--linear) inset; }
 .wiz-radio {
   width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--rand); flex: none; margin-top: 2px;
@@ -421,7 +430,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.44 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.45 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2150,7 +2159,43 @@ var ConfiguratorLogica = (function () {
       });
     }
 
+    // v1.45 (review 12-10-2026): een lengte met decimalen kwam zo in de
+    // bestelcode, en een lengte korter dan de astappen gaf geen melding.
+    if (typeof uit.lengte === 'number' && Number.isFinite(uit.lengte) && uit.lengte > 0) {
+      if (uit.lengte !== Math.round(uit.lengte)) {
+        throw new Error('lengte moet een heel aantal mm zijn, kreeg ' + uit.lengte);
+      }
+      var astappen = astapLengte(uit, uit.astap1) + astapLengte(uit, uit.astap2);
+      if (uit.lengte <= astappen) {
+        throw new Error('De totaallengte (' + uit.lengte + ' mm) is niet langer dan de twee astappen ' +
+          'samen (' + Math.ceil(astappen) + ' mm). Kies een grotere lengte of andere astappen.');
+      }
+    }
+
     return uit;
+  }
+
+  // v1.45 (review 12-10-2026): de klant zag technische veldnamen, zoals
+  // "krachtN moet positief zijn, kreeg 0". De controles zelf blijven
+  // technisch (ze zijn ook voor tests en ontwikkelaars); alleen wat op het
+  // scherm komt, wordt hier vertaald.
+  var LEESBARE_VELDNAAM = {
+    krachtN: 'De axiale kracht',
+    snelheidMmPerSec: 'De snelheid',
+    overspanningMm: 'De overspanning tussen de lagers (of de slag)',
+    slagMm: 'De slag',
+    lengte: 'De totaallengte',
+    aantal: 'Het aantal',
+    vereisteUren: 'De vereiste levensduur',
+    d: 'De diameter',
+    P: 'De spoed'
+  };
+
+  function leesbareFout(tekst) {
+    var m = /^([A-Za-z]+) moet (.*?)(?:, kreeg .*)?$/.exec(String(tekst));
+    if (!m || !LEESBARE_VELDNAAM[m[1]]) return String(tekst);
+    var eis = m[2] === 'positief zijn' ? 'groter zijn dan 0' : m[2];
+    return LEESBARE_VELDNAAM[m[1]] + ' moet ' + eis + '.';
   }
 
   // ── Belastingvelden (toepassingsgegevens, geen bestelcode-velden) ───────
@@ -2578,7 +2623,9 @@ var ConfiguratorLogica = (function () {
         fi: druk.fi,
         pvWaarde: druk.pvWaarde,
         edMax: druk.edMax,
-        edSmering: druk.edSmering,
+        // v1.45: geen smeeradvies bij een droge, zelfsmerende moer.
+        edSmering: belasting.smering === 'droog' && Rekenkern.zelfsmerend('trapezium', belasting.moermateriaal)
+          ? 'droog met zelfsmerende moer' : druk.edSmering,
         // Spec §2/§4 (v1.24): knik en toerental als bij kogelomloop. krachtOk
         // blijft hieronder de draaggetaltoets, dus heet de knikuitkomst hier
         // knikOk. Een Tr 20×4 van 3000 mm onder 10 kN (F_k,max ≈ 0,66 kN)
@@ -2711,6 +2758,7 @@ var ConfiguratorLogica = (function () {
     lengteUitSlag: lengteUitSlag,
     slagMelding: slagMelding,
     overspanningUitLengte: overspanningUitLengte,
+    leesbareFout: leesbareFout,
     velden: velden,
     spoedenVoor: spoedenVoor,
     moertypenVoor: moertypenVoor,
@@ -2873,10 +2921,10 @@ var Rekenkern = (function () {
   // Zonder die regel leest een klant alleen het woord 'statisch' of 'geen' en
   // moet hij zelf maar raden of dat goed of slecht nieuws is.
   var KLASSE_UITLEG = {
-    dynamisch: 'de moer komt uit beweging vanzelf tot stilstand. Dit is de enige klasse die als ' +
-      'remfunctie geldt, en ook dan blijft een tweede voorziening nodig',
-    statisch: 'de moer blijft vanuit stilstand staan, maar niet bij trilling. Dit is géén remfunctie',
-    geen: 'de last drijft de spindel terug zodra het aandrijfkoppel wegvalt'
+    dynamisch: 'De moer komt uit beweging vanzelf tot stilstand. Dit is de enige klasse die als ' +
+      'remfunctie geldt, en ook dan blijft een tweede voorziening nodig.',
+    statisch: 'De moer blijft vanuit stilstand staan, maar niet bij trilling. Dit is géén remfunctie.',
+    geen: 'De last drijft de spindel terug zodra het aandrijfkoppel wegvalt.'
   };
 
   function zelfremklasse(phi, moermateriaal) {
@@ -3793,13 +3841,14 @@ var Advies = (function () {
     var beste = null;
     lijst.forEach(function (m) {
       if (m.cDynBFM === null || !Rekenkern.draaggetalOk(invoer.krachtN, m.cDynBFM)) return;
-      if (Rekenkern.knik(m.d3, invoer.overspanningMm, invoer.lagering).FkMax < invoer.krachtN) return;
       var lm = Catalogus.trapeziumMoerlengte('BFM', m.d, m.P);
       if (lm === null) return;
+      var L = vrijeLengteVoor(invoer, lm);
+      if (Rekenkern.knik(m.d3, L, invoer.lagering).FkMax < invoer.krachtN) return;
       var vgMax = Rekenkern.maxGlijsnelheid(
         Rekenkern.vlaktedruk(invoer.krachtN, m.P, lm, m.d2, m.gangen || 1), invoer.moermateriaal);
       if (vgMax <= 0) return;
-      var nCrMax = Rekenkern.kritischToerentalTrapezium(m.d2, invoer.overspanningMm, invoer.lagering).nCrMax;
+      var nCrMax = Rekenkern.kritischToerentalTrapezium(m.d2, L, invoer.lagering).nCrMax;
       var vMax = Math.min((vgMax * 1000 * m.P) / (m.d2 * Math.PI), (nCrMax * m.P) / 60);
       if (!beste || vMax > beste.vMaxMmPerSec) {
         beste = { maat: m, vMaxMmPerSec: vMax };
@@ -3892,6 +3941,26 @@ var Advies = (function () {
     return delen.slice(0, -1).join(', ') + ' en ' + delen[delen.length - 1];
   }
 
+  // v1.45 (review 12-10-2026): de vrije lengte tussen de lagers is minstens
+  // de slag plus de moerlengte (definitie opdrachtgever, zie
+  // WizardLogica.totaalLengte). Vóór v1.45 rekende het advies met alleen de
+  // slag, terwijl de configurator daarna slag + moer gebruikte; een maat kon
+  // zo in het advies passen en in de configurator falen. De moerlengte hangt
+  // van de maat en de moer af, dus wordt dit per kandidaat bepaald.
+  function moerLengteMm(type, code, m) {
+    if (!code) return 0;
+    var maten = type === 'draadspindel'
+      ? Catalogus.draadspindel.moerMaten(code, m.d)
+      : Catalogus.moerMaten(type, code, m.d, m.P, 'rechts');
+    return maten && maten.lengte ? maten.lengte : 0;
+  }
+
+  function vrijeLengteVoor(invoer, moerMm) {
+    var slag = invoer.slagMm;
+    if (typeof slag !== 'number' || !Number.isFinite(slag) || slag <= 0) return invoer.overspanningMm;
+    return Math.max(invoer.overspanningMm, slag + moerMm);
+  }
+
   function kandidaten(type) {
     var lijst = type === 'trapezium'
       // Maten zonder bekend C dyn (cDynBFM === null, momenteel alleen Tr 48×8)
@@ -3957,7 +4026,8 @@ var Advies = (function () {
           d3: m.d3, dKern: m.dKern, P: m.P,
           cDynN: Catalogus.draadspindel.moerData(moeren[j], m.d).cDynN,
           pvPunten: Catalogus.draadspindel.pvReductie[m.d],
-          lengteMm: invoer.overspanningMm, lagering: invoer.lagering,
+          lengteMm: vrijeLengteVoor(invoer, moerLengteMm('draadspindel', moeren[j], m)),
+          lagering: invoer.lagering,
           krachtN: invoer.krachtN, snelheidMmPerSec: invoer.snelheidMmPerSec
         });
         if (toets.ok) {
@@ -4034,17 +4104,22 @@ var Advies = (function () {
       var uitkomst = { n: n };
 
       if (invoer.type === 'kogelomloop') {
-        var knik = Rekenkern.knik(m.d3, invoer.overspanningMm, invoer.lagering);
-        var toer = Rekenkern.kritischToerental(m.d3, invoer.overspanningMm, invoer.lagering);
-        uitkomst.knik = knik;
-        uitkomst.toerental = toer;
-        if (toer.nCrMax < n || knik.FkMax < invoer.krachtN) continue;
         // Moer volgens spec 2026-10-05-levensduur-statisch-ontwerp §3: een
         // maat komt alleen in aanmerking als er een moer bij bestaat die de
         // vereiste levensduur, de statische toets en (waar van toepassing) de
         // d·n-grens haalt. Het advies kiest de eerste zo'n moer in de
         // voorkeursvolgorde (Catalogus.KOGEL_MOER_VOORKEUR, nooit FSCL).
+        // v1.45: de moer wordt vóór knik en toerental gekozen, want zijn
+        // lengte telt mee in de vrije lengte (vrijeLengteVoor).
         var moerKeuze = kiesKogelMoer(m, n, invoer);
+        var moerVoorLengte = moerKeuze.gekozen || moerKeuze.sterkste;
+        var Lk = vrijeLengteVoor(invoer, moerLengteMm('kogelomloop', moerVoorLengte && moerVoorLengte.moertype, m));
+        var knik = Rekenkern.knik(m.d3, Lk, invoer.lagering);
+        var toer = Rekenkern.kritischToerental(m.d3, Lk, invoer.lagering);
+        uitkomst.knik = knik;
+        uitkomst.toerental = toer;
+        uitkomst.vrijeLengteMm = Lk;
+        if (toer.nCrMax < n || knik.FkMax < invoer.krachtN) continue;
         if (!moerKeuze.gekozen) {
           var sterk = moerKeuze.sterkste;
           if (sterk && (!afgevallenOpMoer || sterk.levensduurUren > afgevallenOpMoer.levensduurUren)) {
@@ -4060,11 +4135,14 @@ var Advies = (function () {
         // kritisch toerental voldoen, met d3 volgens DIN 103 (KAMMERER p.130,
         // ZIMM, NEFF; besluit opdrachtgever 05-10-2026) en dezelfde formules
         // als kogelomloop (MCA p.34–35): F_k,max = F_k/2, n_cr,max = 0,8·n_cr.
-        var knikT = Rekenkern.knik(m.d3, invoer.overspanningMm, invoer.lagering);
+        // v1.45: vrije lengte minstens slag + moerlengte (vrijeLengteVoor).
+        var Lt = vrijeLengteVoor(invoer, moerLengteMm('trapezium', 'BFM', m));
+        var knikT = Rekenkern.knik(m.d3, Lt, invoer.lagering);
         // v1.35: kritisch toerental zoals MCAlc (spec 2026-10-09-trapezium-mcalc §2.5).
-        var toerT = Rekenkern.kritischToerentalTrapezium(m.d2, invoer.overspanningMm, invoer.lagering);
+        var toerT = Rekenkern.kritischToerentalTrapezium(m.d2, Lt, invoer.lagering);
         uitkomst.knik = knikT;
         uitkomst.toerental = toerT;
+        uitkomst.vrijeLengteMm = Lt;
         if (toerT.nCrMax < n || knikT.FkMax < invoer.krachtN) continue;
         // cDynBFM is een DYNAMISCH draaggetal (MCA Kugelberger V3.4 p.15),
         // een orde-grootte-afkeuring; de BFM-waarden gelden voorlopig ook voor
@@ -5430,7 +5508,7 @@ var WizardLogica = (function () {
       try {
         var cfg = naarConfiguratie(a);
         if (!cfg.advies || !cfg.advies.maat) return;
-        var c = ConfiguratorLogica.controleer(cfg, naarAdviesInvoer(a, type));
+        var c = ConfiguratorLogica.controleer(cfg, belastingBijConfiguratie(naarAdviesInvoer(a, type), cfg));
         var maat = cfg.advies.maat;
         // Review I-2: de kritieke waarschuwingen van dít type (zoals de
         // typegebonden remtekst bij niet-horizontale inbouw); de algemene
@@ -6374,6 +6452,16 @@ var WizardLogica = (function () {
     return Math.ceil(tussen + astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
   }
 
+  // v1.45 (review 12-10-2026): bij een geadviseerde configuratie is de
+  // overspanning de afstand tussen de lagers van die configuratie (totaal-
+  // lengte min de astappen, dus minstens slag + moerlengte), net als in
+  // Advies.kies() per maat. Zo rekenen stap 8 en de configurator met dezelfde
+  // vrije lengte als het advies, en past de slag bij het openen.
+  function belastingBijConfiguratie(invoer, cfg) {
+    var o = cfg && cfg.lengte ? ConfiguratorLogica.overspanningUitLengte(cfg) : null;
+    return o ? Object.assign({}, invoer, { overspanningMm: Math.max(invoer.overspanningMm, o) }) : invoer;
+  }
+
   var BEDRIJFSUREN_SLEUTELS = ['urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren'];
   var TRILLINGEN_NAAR_FS = { nee: 'geen', ja: 'trillingen', weetniet: 'onbekend' };
 
@@ -6412,6 +6500,11 @@ var WizardLogica = (function () {
     var profiel = Rekenkern.bewegingsprofiel(a.slag, snelheid, opgegevenA, a.slagtijd);
     var versnelling = opgegevenA !== undefined ? opgegevenA : profiel.aAfgeleid;
     var meldingen = profiel.melding ? [profiel.melding] : [];
+    // v1.45: een negatieve versnelling werd stil genegeerd.
+    if (typeof a.versnelling === 'number' && a.versnelling < 0) {
+      meldingen.push('Een versnelling kan niet negatief zijn (u vulde ' + nlGetal(a.versnelling, 1) +
+        ' m/s² in). De tool rekent daarom alsof u geen versnelling invulde.');
+    }
     var uitGewicht = ontbreekt(a.gewicht) ? undefined
       : (a.gewicht > 0 ? Rekenkern.axialeKrachtUitGewicht(
           a.gewicht, a.orientatie !== 'horizontaal', a.geleiding, versnelling) : 0);
@@ -6535,7 +6628,7 @@ var WizardLogica = (function () {
     materiaal: R_OMGEVING, materiaalMoer: R_OMGEVING, materiaalSpindel: R_OMGEVING,
     krachtN: 'Overgenomen uit uw antwoord, of berekend uit gewicht, geleiding en versnelling.',
     snelheidMmPerSec: overgenomen('de gevraagde snelheid'),
-    overspanningMm: 'Overgenomen uit uw antwoord over de overspanning of de slag (de grootste van de twee).',
+    overspanningMm: 'Uw opgegeven overspanning, of de slag plus de moerlengte (de grootste van de twee).',
     slagMm: overgenomen('de slag'),
     lagering: overgenomen('de lagerconfiguratie'),
     moermateriaal: overgenomen('het moermateriaal'),
@@ -6574,11 +6667,30 @@ var WizardLogica = (function () {
     }
     var advies = Advies.kies(invoer);
     if (!advies.maat) return { type: a.type, advies: advies };
+    return configuratieVoorMaat(a, advies, advies.maat);
+  }
 
+  // v1.45 (review 12-10-2026): zonder passende maat opende de configurator
+  // met zijn eigen standaardwaarden, en vielen de keuzes van de klant weg
+  // (moermateriaal, lagerunits, astappen, koppeling). Nu krijgt de klant een
+  // uitgangspunt mét zijn keuzes: de maat met de hoogst haalbare snelheid
+  // (trapezium) of anders de standaardmaat die het ui-blok meegeeft. Geen
+  // advies: de toetsen in de configurator laten zien wat niet past.
+  function naarUitgangspunt(a, standaardMaat) {
+    var advies = Advies.kies(naarAdviesInvoer(a, a.type));
+    if (advies.maat) return configuratieVoorMaat(a, advies, advies.maat);
+    var maat = (advies.hoogsteHaalbareSnelheid && advies.hoogsteHaalbareSnelheid.maat) || standaardMaat;
+    var cfg = configuratieVoorMaat(a, advies, maat);
+    cfg.geenPassendeMaat = true;
+    cfg.herkomst.d = cfg.herkomst.P = 'Geen passende maat gevonden: dit is een uitgangspunt om mee te rekenen.';
+    return cfg;
+  }
+
+  function configuratieVoorMaat(a, advies, maat) {
     var cfg = {
       type: a.type,
-      d: advies.maat.d,
-      P: advies.maat.P,
+      d: maat.d,
+      P: maat.P,
       // Voorlopig; de echte totaallengte volgt aan het eind uit slag,
       // overspanning, moer en astappen (zie totaalLengte hieronder).
       lengte: 800,
@@ -6632,7 +6744,8 @@ var WizardLogica = (function () {
       cfg.draadCoating = a.coating === 'ongecoat' ? 'U' : 'T';
       // Advies.kies() kiest de moer (rond, standaard of spelingsvrij) samen
       // met de maat, want het draagvermogen verschilt per moer.
-      cfg.moertype = advies.berekend.moertype;
+      cfg.moertype = (advies.berekend && advies.berekend.moertype) ||
+        ConfiguratorLogica.voorkeursMoer('draadspindel', cfg.d, cfg.P);
     }
 
     // Stap 7 stelt twee losse vragen, en die moeten ook los blijven:
@@ -6735,9 +6848,11 @@ var WizardLogica = (function () {
     ontbrekendGekozenType: ontbrekendGekozenType,
     stappen: stappen,
     naarConfiguratie: naarConfiguratie,
+    naarUitgangspunt: naarUitgangspunt,
     naarAdviesInvoer: naarAdviesInvoer,
     configuratorBelasting: configuratorBelasting,
     belastingHerkomst: belastingHerkomst,
+    belastingBijConfiguratie: belastingBijConfiguratie,
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
     bewegingsControle: bewegingsControle,
@@ -7071,8 +7186,10 @@ var Offerte = (function () {
       // Spec 2026-10-09-trapezium-mcalc §2.1–2.3 (v1.35).
       if (typeof grenzen.vlaktedruk === 'number') {
         regels.push('Vlaktedruk moer (' + fmt(grenzen.moerlengte, 0) + ' mm): ' + fmt(grenzen.vlaktedruk, 2) +
-          ' N/mm² (toelaatbaar bij ' + fmt(grenzen.vgTabel, 1) + ' m/s: ' + fmt(grenzen.pMax, 1) +
-          ' N/mm², veiligheid ' + fmt(grenzen.veiligheidVlaktedruk, 2) + ', ' +
+          ' N/mm² (' + (grenzen.pMax > 0
+            ? 'toelaatbaar bij ' + fmt(grenzen.vgTabel, 1) + ' m/s: ' + fmt(grenzen.pMax, 1) +
+              ' N/mm², veiligheid ' + fmt(grenzen.veiligheidVlaktedruk, 2) + ', '
+            : 'glijsnelheid boven de tabel, ') +
           (grenzen.vlaktedrukOk ? 'voldoet' : 'grens overschreden') + ')');
       }
       if (typeof grenzen.edMax === 'number') {
@@ -7202,9 +7319,14 @@ var Offerte = (function () {
       toepassingRegels = toepassingRegels.concat(toepassingExtra);
     }
     toepassingRegels.forEach(function (r) { regels.push(r); });
-    // v1.34: alleen de versnelling krijgt hier een eenheid; zonder 'm/s²' is
-    // het kale getal niet te lezen.
-    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, cfg.voorselectie, { versnelling: ' m/s²', slagtijd: ' s' },
+    // v1.45: eenheden zoals in de adviesaanvraag. Staat de slag al bij de
+    // toepassing (configuratorveld, FB-007), dan niet nog eens de wizardslag.
+    var voorselectie = cfg.voorselectie;
+    if (voorselectie && cfg.toepassing && typeof cfg.toepassing.slagMm === 'number') {
+      voorselectie = Object.assign({}, voorselectie);
+      delete voorselectie.slag;
+    }
+    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, voorselectie, VOORSELECTIE_EENHEID_ADVIES,
       VOORSELECTIE_WAARDEN)
       .forEach(function (r) { regels.push(r); });
 
@@ -8222,7 +8344,9 @@ var Afbeeldingen = (function () {
     materiaal: { staal: 'Staal', rvs: 'RVS' },
     coating: { '': 'Geen', FCR: 'FCR-coating' },
     materiaalMoer: { A: 'A – CuSn7ZnPb brons', C: 'C – kunststof', D: 'D – RVS 304', E: 'E – RVS 316' },
-    koppeling: { nee: 'Nee', ja: 'Ja' }
+    koppeling: { nee: 'Nee', ja: 'Ja' },
+    // v1.45: geen interne codes in de keuzelijst.
+    lagerunits: { beide: 'Vast- en loslager', vastalleen: 'Alleen het vaste lager', geen: 'Geen (zelf aanwezig)' }
   };
 
   // Idem, maar voor ConfiguratorLogica.belastingVelden(). 'lagering' krijgt
@@ -8906,7 +9030,7 @@ var Afbeeldingen = (function () {
     try {
       maten = Maatvoering.bereken(cfg);
     } catch (fout) {
-      maatFout = fout.message;
+      maatFout = ConfiguratorLogica.leesbareFout(fout.message);
     }
     try {
       // Vertrouwde svg-string bij succes — zie de opmerking hierboven. Alle
@@ -8916,7 +9040,7 @@ var Afbeeldingen = (function () {
       tekeningStage.innerHTML = ''; // wist de container; geen data hierin
       var p = document.createElement('p');
       p.className = 'melding fout';
-      p.textContent = fout.message; // foutmelding: altijd textContent
+      p.textContent = ConfiguratorLogica.leesbareFout(fout.message); // foutmelding: altijd textContent
       tekeningStage.appendChild(p);
       return;
     }
@@ -8948,7 +9072,7 @@ var Afbeeldingen = (function () {
       codeEl.textContent = '—';
       document.getElementById('bestelcodeReferentie').textContent = '';
       aanvraagEl.hidden = true;
-      foutEl.textContent = fout.message;
+      foutEl.textContent = ConfiguratorLogica.leesbareFout(fout.message);
       foutEl.hidden = false;
       huidigeBestelcode = null;
     }
@@ -8965,8 +9089,12 @@ var Afbeeldingen = (function () {
       'Glijsnelheid: ' + fmt(r.glijsnelheid, 2) + ' m/s (grens bij deze vlaktedruk: ' +
       (r.vgMax > 0 ? fmt(r.vgMax, 1) + ' m/s' : 'geen, de vlaktedruk is te hoog') + ')', r.glijsnelheidOk));
     inhoud.appendChild(regelMetIcoon(
-      'Vlaktedruk moer (' + fmt(r.moerlengte, 0) + ' mm): ' + fmt(r.vlaktedruk, 2) + ' N/mm² (toelaatbaar bij ' +
-      fmt(r.vgTabel, 1) + ' m/s: ' + fmt(r.pMax, 1) + ' N/mm²; veiligheid ' + fmt(r.veiligheidVlaktedruk, 2) + ')',
+      'Vlaktedruk moer (' + fmt(r.moerlengte, 0) + ' mm): ' + fmt(r.vlaktedruk, 2) + ' N/mm² (' +
+      (r.pMax > 0
+        ? 'toelaatbaar bij ' + fmt(r.vgTabel, 1) + ' m/s: ' + fmt(r.pMax, 1) + ' N/mm²; veiligheid ' +
+          fmt(r.veiligheidVlaktedruk, 2)
+        // v1.45: boven de tabel geen "0,0 N/mm²; veiligheid 0,00".
+        : 'de glijsnelheid ligt boven de tabel voor dit moermateriaal') + ')',
       r.vlaktedrukOk));
     inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (PV-waarde ' + fmt(r.pvWaarde, 0) +
       ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
@@ -8998,7 +9126,7 @@ var Afbeeldingen = (function () {
       grenzenKaart.hidden = false;
       grenzenTitel.textContent = 'Doorgerekende grenzen';
       grenzenInhoud.appendChild(Object.assign(document.createElement('p'),
-        { className: 'melding fout', textContent: fout.message }));
+        { className: 'melding fout', textContent: ConfiguratorLogica.leesbareFout(fout.message) }));
       koppelKaart.hidden = true;
       return null;
     }
@@ -9168,7 +9296,7 @@ var Afbeeldingen = (function () {
       verbergAlgemeneFout();
     } catch (fout) {
       wisAfhankelijkeWeergaven();
-      toonAlgemeneFout(fout.message);
+      toonAlgemeneFout(ConfiguratorLogica.leesbareFout(fout.message));
       return;
     }
     huidigeCfg = cfg;
@@ -9192,10 +9320,22 @@ var Afbeeldingen = (function () {
   // huidige (of standaard) belastingwaarden mee, zodat kracht/snelheid/
   // inbouw niet resetten alleen omdat het spindeltype wisselt — dat zijn
   // toepassingsgegevens, geen producteigenschappen.
-  function opnieuwOpbouwen(type, waarden, belastingWaarden) {
+  // opties.lengteUitSlag (v1.45, typewissel): de nieuwe tak start met zijn
+  // standaardlengte; staat er een slag, dan volgt de lengte die slag. Anders
+  // volgt de overspanning de lengte (FB-006), ook bij de eerste opbouw. Het
+  // moermateriaal van de bestelcode volgt dat van de doorrekening (B4).
+  function opnieuwOpbouwen(type, waarden, belastingWaarden, opties) {
     huidigType = type;
     bouwVeldenContainer(type, waarden);
     bouwBelastingContainer(type, belastingWaarden || STANDAARD_BELASTING);
+    var slagEl = document.getElementById('belasting-slagMm');
+    if (opties && opties.lengteUitSlag && slagEl && slagEl.value !== '') lengteVolgtSlag();
+    else overspanningVolgtLengte();
+    var moerEl = document.getElementById('belasting-moermateriaal');
+    var codeEl = document.getElementById('invoer-materiaalMoer');
+    if (moerEl && codeEl) {
+      codeEl.value = ConfiguratorLogica.materiaalMoerVoorMoermateriaal(moerEl.value, codeEl.value);
+    }
     bijwerken();
   }
 
@@ -9232,8 +9372,10 @@ var Afbeeldingen = (function () {
   // (andere maat = andere astaplengte), dan volgt de overspanning tussen de
   // lagers: totaallengte min de astappen. De klant kan de overspanning daarna
   // nog zelf aanpassen; het herkomstlabel van de wizard vervalt.
+  // v1.45: staat er een slag, dan volgt bij een andere maat, moer of astap
+  // eerst de lengte de slag (lengteVolgtSlag), anders alleen de overspanning.
   var VELDEN_VOOR_OVERSPANNING = ['invoer-lengte', 'invoer-astap1', 'invoer-astap2',
-    'invoer-d', 'invoer-maat', 'invoer-reeks'];
+    'invoer-d', 'invoer-P', 'invoer-maat', 'invoer-reeks', 'invoer-moertype'];
 
   // FB-007 (v1.44): verandert de klant de slag, dan wordt de totaallengte
   // slag + moerlengte + astappen (zoals in de wizard) en volgt de overspanning.
@@ -9242,13 +9384,17 @@ var Afbeeldingen = (function () {
     var lengteEl = document.getElementById('invoer-lengte');
     var slag = slagEl ? Number(slagEl.value) : NaN;
     if (!lengteEl || slagEl.value === '' || !(slag > 0)) return;
+    var nieuw;
     try {
-      lengteEl.value = String(ConfiguratorLogica.lengteUitSlag(
+      nieuw = String(ConfiguratorLogica.lengteUitSlag(
         ConfiguratorLogica.normaliseer(lezenRuweConfig()), slag));
     } catch (fout) {
       return;
     }
-    wisHerkomst(huidigeHerkomst, 'lengte', 'herkomst-spec');
+    if (lengteEl.value !== nieuw) {
+      lengteEl.value = nieuw;
+      wisHerkomst(huidigeHerkomst, 'lengte', 'herkomst-spec');
+    }
     overspanningVolgtLengte();
   }
 
@@ -9270,7 +9416,9 @@ var Afbeeldingen = (function () {
       return;
     }
     if (o === null) return;
-    el.value = String(Math.round(o));
+    var nieuw = String(Math.round(o));
+    if (el.value === nieuw) return;
+    el.value = nieuw;
     wisHerkomst(huidigeBelastingHerkomst, 'overspanningMm', 'herkomst-bel');
   }
 
@@ -9305,7 +9453,7 @@ var Afbeeldingen = (function () {
       huidigeHerkomst = overgeblevenHerkomst.herkomst;
       huidigeBelastingHerkomst = overgeblevenHerkomst.belastingHerkomst;
       opgeslagenHerkomstPerTak = overgeblevenHerkomst.opgeslagenHerkomstPerTak;
-      opnieuwOpbouwen(nieuwType, STANDAARD[nieuwType], behoudenBelasting);
+      opnieuwOpbouwen(nieuwType, STANDAARD[nieuwType], behoudenBelasting, { lengteUitSlag: true });
       return;
     }
     if (e.target.id === 'invoer-reeks') {
@@ -9382,7 +9530,11 @@ var Afbeeldingen = (function () {
       var moertypeVoorFscl = document.getElementById('invoer-moertype');
       if (moertypeVoorFscl && moertypeVoorFscl.value === 'FSCL') moertypeVoorFscl.value = 'FSCR';
     }
-    if (VELDEN_VOOR_OVERSPANNING.indexOf(e.target.id) !== -1) overspanningVolgtLengte();
+    if (VELDEN_VOOR_OVERSPANNING.indexOf(e.target.id) !== -1) {
+      var slagVeld = document.getElementById('belasting-slagMm');
+      if (e.target.id !== 'invoer-lengte' && slagVeld && slagVeld.value !== '') lengteVolgtSlag();
+      else overspanningVolgtLengte();
+    }
     bijwerken();
   });
   form.addEventListener('input', function (e) {
@@ -9475,7 +9627,7 @@ var Afbeeldingen = (function () {
     try {
       return ConfiguratorLogica.controleer(cfg, belasting);
     } catch (fout) {
-      return { fout: fout.message };
+      return { fout: ConfiguratorLogica.leesbareFout(fout.message) };
     }
   }
 
@@ -9541,7 +9693,7 @@ var Afbeeldingen = (function () {
         offerteLengteKaart.hidden = true;
       }
     } catch (fout) {
-      offertePreviewEl.textContent = fout.message;
+      offertePreviewEl.textContent = ConfiguratorLogica.leesbareFout(fout.message);
       offerteVersturenKnop.disabled = true;
       offerteLengteKaart.hidden = true;
     }
@@ -9824,6 +9976,7 @@ var Afbeeldingen = (function () {
         }
         wizRenderStap();
       });
+      wizMaakTegelBedienbaar(opt, grid, vraag, wizAntwoorden[vraag.sleutel] === optie.waarde);
 
       grid.appendChild(opt);
     });
@@ -10035,12 +10188,35 @@ var Afbeeldingen = (function () {
         wizAntwoorden.snelheidMmS = undefined; // categorie wint van een eerder ingevuld getal
         wizRenderStap();
       });
+      wizMaakTegelBedienbaar(opt, grid, vraag, isActief);
 
       grid.appendChild(opt);
     });
     wrapper.appendChild(grid);
 
     return wrapper;
+  }
+
+  // v1.45 (toegankelijkheid): de keuzetegels zijn met het toetsenbord en
+  // een schermlezer te bedienen: rol radio, Tab, Enter of spatie. Na de
+  // her-render krijgt de gekozen tegel de focus terug.
+  var wizFocusNaRender = null;
+  function wizMaakTegelBedienbaar(opt, grid, vraag, gekozen) {
+    grid.setAttribute('role', 'radiogroup');
+    if (vraag.tekst) grid.setAttribute('aria-label', vraag.tekst);
+    opt.setAttribute('role', 'radio');
+    opt.setAttribute('aria-checked', gekozen ? 'true' : 'false');
+    opt.tabIndex = 0;
+    opt.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      e.preventDefault();
+      wizFocusNaRender = opt.dataset.sleutel + '|' + opt.dataset.waarde;
+      opt.click();
+    });
+    if (wizFocusNaRender === opt.dataset.sleutel + '|' + opt.dataset.waarde) {
+      wizFocusNaRender = null;
+      setTimeout(function () { opt.focus(); }, 0);
+    }
   }
 
   function wizBouwVraag(vraag) {
@@ -10377,7 +10553,7 @@ var Afbeeldingen = (function () {
       cfg = WizardLogica.naarConfiguratie(wizAntwoordenVoorAdvies());
     } catch (fout) {
       resultaatDiv.appendChild(wizAlert(
-        fout.message.replace(/\.?$/, '.') + ' Pas de antwoorden in de vorige stappen aan.',
+        ConfiguratorLogica.leesbareFout(fout.message).replace(/\.?$/, '.') + ' Pas de antwoorden in de vorige stappen aan.',
         'kritiek'));
       wizContainer.appendChild(resultaatDiv);
       return;
@@ -10537,7 +10713,7 @@ var Afbeeldingen = (function () {
           }
         } catch (fout) {
           inhoud.appendChild(Object.assign(document.createElement('p'),
-            { className: 'melding fout', textContent: fout.message }));
+            { className: 'melding fout', textContent: ConfiguratorLogica.leesbareFout(fout.message) }));
         }
       }
 
@@ -10546,7 +10722,7 @@ var Afbeeldingen = (function () {
 
       // Doorgerekende grenzen: dezelfde functie als de configurator.
       try {
-        var belasting = wizBelastingUitAntwoorden(wizAntwoorden);
+        var belasting = WizardLogica.belastingBijConfiguratie(wizBelastingUitAntwoorden(wizAntwoorden), cfg);
         var check = ConfiguratorLogica.controleer(cfg, belasting);
         var grenzenKaart = document.createElement('div');
         grenzenKaart.className = 'kaart';
@@ -10668,6 +10844,14 @@ var Afbeeldingen = (function () {
 
   function wizStartConfigurator(cfg) {
     var tak = wizTak();
+    // v1.45: zonder passende maat toch de keuzes van de klant meenemen
+    // (WizardLogica.naarUitgangspunt). Lukt ook dat niet, dan de standaard.
+    if (!cfg || !cfg.d) {
+      try {
+        cfg = WizardLogica.naarUitgangspunt(wizAntwoordenVoorAdvies(),
+          { d: STANDAARD[tak].d, P: STANDAARD[tak].P });
+      } catch (fout) { /* onvolledige antwoorden: configurator met standaardwaarden */ }
+    }
     var waarden = Object.assign({}, STANDAARD[tak]);
     huidigeHerkomst = (cfg && cfg.herkomst) || {}; // vóór opnieuwOpbouwen(): bouwVeld() leest dit
     if (cfg && cfg.d) {
@@ -10691,7 +10875,7 @@ var Afbeeldingen = (function () {
     // Bedrijfsurenvelden exact uit de wizard, leeg blijft leeg (zie
     // WizardLogica.configuratorBelasting).
     var belasting = WizardLogica.configuratorBelasting(STANDAARD_BELASTING,
-      wizBelastingUitAntwoorden(wizAntwoorden));
+      WizardLogica.belastingBijConfiguratie(wizBelastingUitAntwoorden(wizAntwoorden), cfg && cfg.d ? cfg : null));
     // Geen slag opgegeven: dan ook geen label "overgenomen" bij een leeg veld.
     if (belasting.slagMm === undefined) delete huidigeBelastingHerkomst.slagMm;
     opnieuwOpbouwen(tak, waarden, belasting);
