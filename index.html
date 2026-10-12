@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.43  12-10-2026  FB-006: overspanning tussen de lagers volgt de totaallengte min de astappen
   1.42  12-10-2026  FB-005: configurator in drie kolommen op brede schermen; uitkomsten blijven in beeld bij scrollen
   1.41  12-10-2026  Zichtbare teksten nagelopen (u-vorm, geen gedachtestreepjes, korter en actiever); begrijpelijke melding zonder kracht en gewicht
   1.40  12-10-2026  Uitleg bij de vraag naar de axiale kracht
@@ -419,7 +420,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.42 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.43 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2649,8 +2650,31 @@ var ConfiguratorLogica = (function () {
     throw new Error('onbekend spindeltype: ' + cfg.type);
   }
 
+  // Lengte van één astap in mm (0 zonder astapbewerking). cfg is een
+  // genormaliseerde configuratie: de lagerunitcode draagt dan zijn maat
+  // ('FKN30'). Ook gebruikt door WizardLogica.totaalLengte().
+  function astapLengte(cfg, code) {
+    if (code === undefined || code === null || code === '' ||
+        code === '0' || code === 'Z' || code === 'NNN') return 0;
+    if (cfg.type === 'draadspindel') return Catalogus.draadspindel.eindeMaten(code, cfg.d).lengte;
+    var parsed = Catalogus.parseLagerunit(code);
+    if (!parsed || parsed.maat === null) return 0;
+    return Catalogus.astapMaten(parsed.code, parsed.maat, parsed.uitvoering).lengte;
+  }
+
+  // FB-006 (v1.43): de overspanning tussen de lagers volgt in de configurator
+  // de totaallengte, zoals de wizard de totaallengte uit de overspanning
+  // opbouwt: totaallengte min de twee astappen. null als er dan niets
+  // overblijft (bijvoorbeeld halverwege het typen van een lengte).
+  function overspanningUitLengte(cfg) {
+    var o = cfg.lengte - astapLengte(cfg, cfg.astap1) - astapLengte(cfg, cfg.astap2);
+    return Number.isFinite(o) && o > 0 ? o : null;
+  }
+
   return {
     VERSIE: '1.0',
+    astapLengte: astapLengte,
+    overspanningUitLengte: overspanningUitLengte,
     velden: velden,
     spoedenVoor: spoedenVoor,
     moertypenVoor: moertypenVoor,
@@ -6301,13 +6325,9 @@ var WizardLogica = (function () {
     return ongeldig.length ? ongeldig[0] : Math.max.apply(null, waarden);
   }
 
-  function astapLengte(cfg, code) {
-    if (ontbreekt(code) || code === '0' || code === 'Z' || code === 'NNN') return 0;
-    if (cfg.type === 'draadspindel') return Catalogus.draadspindel.eindeMaten(code, cfg.d).lengte;
-    var parsed = Catalogus.parseLagerunit(code);
-    if (!parsed || parsed.maat === null) return 0;
-    return Catalogus.astapMaten(parsed.code, parsed.maat, parsed.uitvoering).lengte;
-  }
+  // De astaplengte staat sinds v1.43 in ConfiguratorLogica: de configurator
+  // rekent er de overspanning mee terug uit de totaallengte (FB-006).
+  var astapLengte = ConfiguratorLogica.astapLengte;
 
   function moerLengte(cfg) {
     if (cfg.type === 'draadspindel') return Catalogus.draadspindel.moerMaten(cfg.moertype, cfg.d).lengte;
@@ -9165,6 +9185,27 @@ var Afbeeldingen = (function () {
     }
   }
 
+  // FB-006 (v1.43): verandert de klant de totaallengte, een astap of de maat
+  // (andere maat = andere astaplengte), dan volgt de overspanning tussen de
+  // lagers: totaallengte min de astappen. De klant kan de overspanning daarna
+  // nog zelf aanpassen; het herkomstlabel van de wizard vervalt.
+  var VELDEN_VOOR_OVERSPANNING = ['invoer-lengte', 'invoer-astap1', 'invoer-astap2',
+    'invoer-d', 'invoer-maat', 'invoer-reeks'];
+
+  function overspanningVolgtLengte() {
+    var el = document.getElementById('belasting-overspanningMm');
+    if (!el) return;
+    var o;
+    try {
+      o = ConfiguratorLogica.overspanningUitLengte(ConfiguratorLogica.normaliseer(lezenRuweConfig()));
+    } catch (fout) {
+      return;
+    }
+    if (o === null) return;
+    el.value = String(Math.round(o));
+    wisHerkomst(huidigeBelastingHerkomst, 'overspanningMm', 'herkomst-bel');
+  }
+
   // ── Gebeurtenissen ───────────────────────────────────────────────────
   var form = document.getElementById('configuratorForm');
   form.addEventListener('change', function (e) {
@@ -9273,11 +9314,13 @@ var Afbeeldingen = (function () {
       var moertypeVoorFscl = document.getElementById('invoer-moertype');
       if (moertypeVoorFscl && moertypeVoorFscl.value === 'FSCL') moertypeVoorFscl.value = 'FSCR';
     }
+    if (VELDEN_VOOR_OVERSPANNING.indexOf(e.target.id) !== -1) overspanningVolgtLengte();
     bijwerken();
   });
   form.addEventListener('input', function (e) {
     if (e.target.tagName === 'INPUT') {
       wisHerkomst(huidigeHerkomst, e.target.name, 'herkomst-spec');
+      if (e.target.id === 'invoer-lengte') overspanningVolgtLengte();
       bijwerken();
     }
   });
