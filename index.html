@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.42  12-10-2026  FB-005: configurator in drie kolommen op brede schermen; uitkomsten blijven in beeld bij scrollen
   1.41  12-10-2026  Zichtbare teksten nagelopen (u-vorm, geen gedachtestreepjes, korter en actiever); begrijpelijke melding zonder kracht en gewicht
   1.40  12-10-2026  Uitleg bij de vraag naar de axiale kracht
   1.39  12-10-2026  Nauwkeurigheid als lineaire schaal in plaats van schietschijf
@@ -129,6 +130,20 @@ h1, h2, h3, .kop {
 .inhoud { max-width: 1260px; margin: 0 auto; padding: 22px 18px 48px; width: 100%; }
 .raster { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 860px) { .raster { grid-template-columns: 1fr; } }
+/* FB-005 (v1.42): de uitkomsten (tekening, bestelcode, grenzen) blijven in
+   beeld terwijl de klant door de velden scrolt; past de kolom niet in het
+   venster, dan scrolt hij zelf. 76px = kopbalk (60px) + marge. */
+@media (min-width: 861px) {
+  .rechterkolom { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; }
+}
+/* FB-005 (v1.42): op brede schermen drie kolommen — Specificaties, Belasting
+   & inbouw, uitkomsten — zodat de invoer half zo lang wordt. display:
+   contents maakt de twee invoerkaarten zelf tot rasteritems. */
+@media (min-width: 1400px) {
+  #configuratorView.inhoud { max-width: 1680px; }
+  #configuratorView .raster { grid-template-columns: minmax(0, 360px) minmax(0, 360px) minmax(0, 1fr); }
+  #configuratorView .linkerkolom, #configuratorForm { display: contents; }
+}
 
 /* ── Kaarten ── */
 .kaart { background: var(--oppervlak); border: 1px solid var(--rand); border-radius: 8px;
@@ -404,7 +419,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.41 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.42 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
