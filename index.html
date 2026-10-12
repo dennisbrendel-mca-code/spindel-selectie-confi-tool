@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.37  12-10-2026  FB-002 t/m FB-004: beweging (slag, snelheid, versnelling, tijd) met controle en krachtcontrole; schuifbalken bedrijfsuren; lagerschema's
   1.36  09-10-2026  Kritisch toerental trapezium met de lagerfactor f_kb volgens de catalogus (ook vast-los en vast-vast)
   1.35  09-10-2026  Trapezium zoals het rekenprogramma van MCA: vlaktedruk per glijsnelheid, inschakelduur uit PV, kritisch toerental, wrijving per moer; belastingsaart en smering (droog → product engineers)
   1.34  09-10-2026  d·n-grens voor alle moeren met smeeradvies, axiale toets vastlager, inschakelduur trapezium, last uit geleiding en versnelling
@@ -246,6 +247,13 @@ code.bestelcode {
   font-family: Fugue, Barlow, sans-serif; font-size: .92rem; color: var(--motion); background: var(--offwhite);
 }
 .wiz-qgroup input:focus { outline: none; border-color: var(--linear); background: #fff; }
+/* v1.37 (FB-003): schuifbalk voor de bedrijfsuren, met de waarde ernaast. */
+.wiz-schuif { display: flex; align-items: center; gap: 14px; }
+.wiz-schuif input[type=range] { flex: 1; accent-color: var(--linear); min-width: 0; }
+.wiz-schuif input[type=range]:disabled { opacity: .45; }
+.wiz-schuif output { min-width: 92px; font-weight: 600; color: var(--motion); text-align: right; }
+.wiz-onbekend { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font-weight: 600; cursor: pointer; }
+.wiz-onbekend input { width: 18px; height: 18px; accent-color: var(--linear); }
 
 .wiz-opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 640px) { .wiz-opt-grid { grid-template-columns: 1fr; } }
@@ -388,7 +396,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel Voorselectie</div>
-    <div class="versie" id="toolVersie">v1.36 · 09-10-2026</div>
+    <div class="versie" id="toolVersie">v1.37 · 12-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3024,6 +3032,36 @@ var Rekenkern = (function () {
     return gewichtsdeel + massaKg * a;
   }
 
+  // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002): bewegingsprofiel van de
+  // heenweg — versnellen, constant, afremmen met dezelfde a, zoals MCAlc.
+  // slagMm, vMmS, aMs2 (m/s²), tS: elk mag ontbreken (undefined/null).
+  // Geeft { gecontroleerd, ok, tMin?, vNodig?, aAfgeleid?, melding }.
+  function nlGetal(x, d) { return x.toFixed(d).replace('.', ','); }
+  function getalOfNiets(x) { return typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null; }
+  function bewegingsprofiel(slagMm, vMmS, aMs2, tS) {
+    var S = getalOfNiets(slagMm), v = getalOfNiets(vMmS), aM = getalOfNiets(aMs2), t = getalOfNiets(tS);
+    if (S === null || v === null) return { gecontroleerd: false, ok: true, melding: null };
+    if (aM !== null) {
+      var a = aM * 1000;
+      var tMin = S >= v * v / a ? S / v + v / a : 2 * Math.sqrt(S / a);
+      if (t !== null && t < tMin - 1e-9) {
+        return { gecontroleerd: true, ok: false, tMin: tMin,
+          melding: 'Met ' + nlGetal(v, 0) + ' mm/s en ' + nlGetal(aM, 1) + ' m/s² duurt een slag van ' +
+            nlGetal(S, 0) + ' mm minimaal ' + nlGetal(Math.ceil(tMin * 100) / 100, 2) + ' s; u vult ' +
+            nlGetal(t, 2) + ' s in.' };
+      }
+      return { gecontroleerd: true, ok: true, tMin: tMin, melding: null };
+    }
+    if (t === null) return { gecontroleerd: false, ok: true, melding: null };
+    if (v * t <= S) {
+      var vNodig = S / t;
+      return { gecontroleerd: true, ok: false, vNodig: vNodig,
+        melding: 'Met ' + nlGetal(v, 0) + ' mm/s haalt u ' + nlGetal(S, 0) + ' mm niet in ' + nlGetal(t, 2) +
+          ' s: daarvoor is gemiddeld al ' + nlGetal(Math.ceil(vNodig), 0) + ' mm/s nodig, plus de tijd om te versnellen.' };
+    }
+    return { gecontroleerd: true, ok: true, aAfgeleid: v * v / (v * t - S) / 1000, melding: null };
+  }
+
   // Spec 2026-10-09-trapezium-mcalc §2.3 (v1.35; vervangt de vaste 10 %-
   // melding van v1.34): bij regelmatig of continu bedrijf en een toelaatbare
   // inschakelduur onder 100 % (zie inschakelduurUitPV) een melding met het
@@ -3412,7 +3450,8 @@ var Rekenkern = (function () {
     SMERING_PE_MELDING: SMERING_PE_MELDING,
     zelfsmerend: zelfsmerend,
     smeringOntbreekt: smeringOntbreekt,
-    trapeziumDrukToets: trapeziumDrukToets
+    trapeziumDrukToets: trapeziumDrukToets,
+    bewegingsprofiel: bewegingsprofiel
   };
 })();
 </script>
@@ -3985,6 +4024,12 @@ var Advies = (function () {
         waarschuwingen.push({ ernst: 'kritiek', tekst: remTekstVoor(berekend.zelfremming) });
       }
     }
+
+    // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002): beweging en kracht die
+    // niet samen kunnen (WizardLogica.bewegingsControle). Ook zonder maat.
+    (Array.isArray(invoer.bewegingMeldingen) ? invoer.bewegingMeldingen : []).forEach(function (tekst) {
+      waarschuwingen.push({ ernst: 'let-op', tekst: tekst });
+    });
 
     if (!gekozen) {
       // B1 — "geen enkele maat" was misleidend: de tool rekent maar een deel
@@ -5430,6 +5475,10 @@ var WizardLogica = (function () {
       // Grenzen voor een getalveld (sinds v1.20 de bedrijfsurenvelden), anders null.
       min: v.min !== undefined ? v.min : null,
       max: v.max !== undefined ? v.max : null,
+      // v1.37 (FB-003): getalveld met min én max als schuifbalk tonen, met
+      // de standaardwaarde waar de balk begint.
+      schuif: v.schuif === true,
+      standaard: v.standaard !== undefined ? v.standaard : null,
       zichtbaar: v.zichtbaar || altijdZichtbaar
     };
   }
@@ -5747,48 +5796,11 @@ var WizardLogica = (function () {
         ]
       }),
       vraag({
-        sleutel: 'versnelling',
-        tekst: 'Versnelling (m/s², optioneel)',
-        type: 'getal',
-        eenheid: 'm/s²',
-        min: 0,
-        hint: 'Laat leeg als u dit niet weet — dan rekent de tool met 9,81 m/s².'
-      }),
-      vraag({
         sleutel: 'kracht',
         tekst: 'Gewenste axiale kracht/belasting (N, optioneel)',
         type: 'getal',
         eenheid: 'N',
         hint: 'Onbekend? Laat leeg: de tool rekent dan met het gewicht, de geleiding en de versnelling.'
-      }),
-      // Samengestelde vraag: een exact getal (mm/s) is de primaire invoer;
-      // de categorieën ernaast zijn een snelkeuze voor wie het getal niet
-      // paraat heeft. Kent de klant een getal, dan gebruikt naarConfiguratie()
-      // dat rechtstreeks; kiest hij een categorie, dan geldt de bijbehorende
-      // representatieve waarde uit SNELHEID_MM_S hieronder. 'zeerlangzaam'
-      // (tot 0,1 m/s) is het regime waar een trapeziumspindel qua glijsnelheid
-      // thuishoort — zonder die categorie was die tak via de snelkeuze
-      // onbereikbaar (zie Advies.kies(): elke standaardmaat overschrijdt zijn
-      // glijsnelheidsgrens al bij 200 mm/s, de vorige laagste categorie).
-      vraag({
-        sleutel: 'snelheid',
-        tekst: 'Gewenste snelheid',
-        type: 'snelheid',
-        eenheid: 'mm/s',
-        hint: 'Vul een exact getal in mm/s in, of kies hieronder een indicatieve categorie.',
-        opties: [
-          optie('zeerlangzaam', 'Zeer langzaam', 'Tot 0,1 m/s'),
-          optie('langzaam', 'Langzaam', '< 0,25 m/s'),
-          optie('gemiddeld', 'Gemiddeld', '0,25 – 1 m/s'),
-          optie('snel', 'Snel', '1 – 2 m/s'),
-          optie('zeersnel', 'Zeer snel', '> 2 m/s')
-        ]
-      }),
-      vraag({
-        sleutel: 'cyclus',
-        tekst: 'Cyclustijd / cycli per dag (optioneel)',
-        type: 'tekst',
-        hint: 'Bijvoorbeeld: 3 seconden, 5000 cycli/dag'
       })
     ];
     // Spec 2026-10-09-trapezium-mcalc §2.2/§2.4 (v1.35): smering bij
@@ -5819,6 +5831,61 @@ var WizardLogica = (function () {
         ]
       }));
     }
+    // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002): de beweging van de
+    // heenweg bij elkaar — slag (was stap 5), snelheid, versnelling en tijd —
+    // zodat de tool kan zien of ze samen kunnen (Rekenkern.bewegingsprofiel).
+    var BEWEGING = 'Beweging (heenweg)';
+    vragen.push(vraag({
+      sleutel: 'slag',
+      tekst: 'Totale slaglengte (mm)',
+      type: 'getal',
+      eenheid: 'mm',
+      groep: BEWEGING,
+      hint: 'Helpt te bepalen of knik en kritisch toerental bij deze toepassing een rol spelen.'
+    }));
+    // Samengestelde vraag: een exact getal (mm/s) is de primaire invoer;
+    // de categorieën ernaast zijn een snelkeuze voor wie het getal niet
+    // paraat heeft. Kent de klant een getal, dan gebruikt naarConfiguratie()
+    // dat rechtstreeks; kiest hij een categorie, dan geldt de bijbehorende
+    // representatieve waarde uit SNELHEID_MM_S hieronder. 'zeerlangzaam'
+    // (tot 0,1 m/s) is het regime waar een trapeziumspindel qua glijsnelheid
+    // thuishoort — zonder die categorie was die tak via de snelkeuze
+    // onbereikbaar (zie Advies.kies(): elke standaardmaat overschrijdt zijn
+    // glijsnelheidsgrens al bij 200 mm/s, de vorige laagste categorie).
+    vragen.push(vraag({
+      sleutel: 'snelheid',
+      groep: BEWEGING,
+      tekst: 'Gewenste snelheid',
+      type: 'snelheid',
+      eenheid: 'mm/s',
+      hint: 'Vul een exact getal in mm/s in, of kies hieronder een indicatieve categorie.',
+      opties: [
+        optie('zeerlangzaam', 'Zeer langzaam', 'Tot 0,1 m/s'),
+        optie('langzaam', 'Langzaam', '< 0,25 m/s'),
+        optie('gemiddeld', 'Gemiddeld', '0,25 – 1 m/s'),
+        optie('snel', 'Snel', '1 – 2 m/s'),
+        optie('zeersnel', 'Zeer snel', '> 2 m/s')
+      ]
+    }));
+    vragen.push(vraag({
+      sleutel: 'versnelling',
+      tekst: 'Versnelling (m/s², optioneel)',
+      type: 'getal',
+      eenheid: 'm/s²',
+      groep: BEWEGING,
+      min: 0,
+      hint: 'Laat leeg als u dit niet weet — dan rekent de tool met de versnelling die uit slag, ' +
+        'snelheid en tijd volgt, en anders met 9,81 m/s².'
+    }));
+    vragen.push(vraag({
+      sleutel: 'slagtijd',
+      tekst: 'Tijd voor de slag (heenweg, s, optioneel)',
+      type: 'getal',
+      eenheid: 's',
+      groep: BEWEGING,
+      min: 0,
+      hint: 'De tijd voor één slag, van stilstand tot stilstand.'
+    }));
     if (tak === 'kogelomloop') vragen = vragen.concat(levensduurVragen());
     return {
       nummer: 4,
@@ -5842,11 +5909,11 @@ var WizardLogica = (function () {
     // staat één keer onder de groepskop (WIZ_GROEP_UITLEG in het ui-blok).
     var GROEP = 'Bedrijfsuren (optioneel)';
     return [
-      vraag({ sleutel: 'urenPerDag', tekst: 'Bedrijfsuren per dag', type: 'getal', eenheid: 'uur/dag',
+      vraag({ sleutel: 'urenPerDag', schuif: true, standaard: 8, tekst: 'Bedrijfsuren per dag', type: 'getal', eenheid: 'uur/dag',
         groep: GROEP, min: 1, max: 24, hint: 'Hoeveel uur per dag draait de machine (1 tot 24)?' }),
-      vraag({ sleutel: 'dagenPerWeek', tekst: 'Aantal dagen per week', type: 'getal', eenheid: 'dag/week',
+      vraag({ sleutel: 'dagenPerWeek', schuif: true, standaard: 5, tekst: 'Aantal dagen per week', type: 'getal', eenheid: 'dag/week',
         groep: GROEP, min: 1, max: 7, hint: '1 tot 7.' }),
-      vraag({ sleutel: 'wekenPerJaar', tekst: 'Aantal weken per jaar', type: 'getal', eenheid: 'week/jaar',
+      vraag({ sleutel: 'wekenPerJaar', schuif: true, standaard: 52, tekst: 'Aantal weken per jaar', type: 'getal', eenheid: 'week/jaar',
         groep: GROEP, min: 1, max: 52, hint: '1 tot 52.' }),
       // Groter dan 0: een HTML-min kan geen open grens uitdrukken, dus min 0
       // in het invoerveld; Rekenkern.vereisteBedrijfsuren() weigert 0 zelf.
@@ -5920,10 +5987,10 @@ var WizardLogica = (function () {
           sleutel: 'lagering',
           tekst: 'Lagerconfiguratie',
           opties: [
-            optie('vast-vast', 'Vast — Vast', 'Hoge belasting/snelheid, lange afstand'),
-            optie('vast-los', 'Vast — Los', 'Gemiddelde belasting/snelheid'),
-            optie('vast-vrij', 'Vast — Vrij', 'Lage snelheid, korte afstand'),
-            optie('los-los', 'Los — Los', 'Lichte belasting, korte afstand'),
+            optie('vast-vast', 'Vast — Vast', 'Aan beide kanten een vast lager: de hoogste knikkracht en het hoogste toerental, voor lange spindels'),
+            optie('vast-los', 'Vast — Los', 'Het vaste lager neemt de axiale kracht op, het losse lager ondersteunt alleen. Dit is de standaardopstelling'),
+            optie('vast-vrij', 'Vast — Vrij', 'Eén kant vrij: alleen voor korte spindels en lage toerentallen'),
+            optie('los-los', 'Los — Los', 'Aan beide kanten alleen ondersteund: voor een lichte belasting en een korte afstand'),
             optie('weetniet', 'Weet ik niet', 'Adviseer op basis van mijn antwoorden')
           ]
         }),
@@ -5939,13 +6006,6 @@ var WizardLogica = (function () {
           eenheid: 'mm',
           hint: 'Afstand tussen de bevestigingspunten van de lagers. Weet u dit nog niet? ' +
             'Laat leeg — dan rekent de tool met 800 mm.'
-        }),
-        vraag({
-          sleutel: 'slag',
-          tekst: 'Totale slaglengte (mm)',
-          type: 'getal',
-          eenheid: 'mm',
-          hint: 'Helpt te bepalen of knik en kritisch toerental bij deze toepassing een rol spelen.'
         })
       ]
     };
@@ -6255,6 +6315,42 @@ var WizardLogica = (function () {
     return uit;
   }
 
+  // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002). Eén plek die uit de
+  // antwoorden bepaalt:
+  //  - het bewegingsprofiel van de heenweg (slag, snelheid, versnelling, tijd;
+  //    Rekenkern.bewegingsprofiel) en de melding als ze niet samen kunnen;
+  //  - de versnelling waarmee gerekend wordt: opgegeven, anders afgeleid uit
+  //    slag, snelheid en tijd, anders leeg (dan a = g);
+  //  - de kracht: opgegeven, of uit gewicht, geleiding en versnelling
+  //    (v1.34). Is de opgegeven kracht kleiner dan wat het gewicht vraagt, dan
+  //    de grootste van de twee, met een melding.
+  // Alleen een uitdrukkelijk horizontale inbouw rekent met de
+  // geleidingswrijving; ook een nog onbeantwoorde inbouwvraag telt als de
+  // zware kant (m·g). Een lege of onbruikbare versnelling (negatief, geen
+  // getal) telt als leeg. Een gewicht van 0 of minder geeft kracht 0, zodat
+  // Advies.kies() de gebruikelijke leesbare fout over de kracht werpt.
+  function bewegingsControle(a) {
+    var snelheid = ontbreekt(a.snelheidMmS)
+      ? (ontbreekt(a.snelheid) ? undefined : SNELHEID_MM_S[a.snelheid])
+      : a.snelheidMmS;
+    var opgegevenA = typeof a.versnelling === 'number' && Number.isFinite(a.versnelling) &&
+      a.versnelling >= 0 ? a.versnelling : undefined;
+    var profiel = Rekenkern.bewegingsprofiel(a.slag, snelheid, opgegevenA, a.slagtijd);
+    var versnelling = opgegevenA !== undefined ? opgegevenA : profiel.aAfgeleid;
+    var meldingen = profiel.melding ? [profiel.melding] : [];
+    var uitGewicht = ontbreekt(a.gewicht) ? undefined
+      : (a.gewicht > 0 ? Rekenkern.axialeKrachtUitGewicht(
+          a.gewicht, a.orientatie !== 'horizontaal', a.geleiding, versnelling) : 0);
+    var krachtN = ontbreekt(a.kracht) ? uitGewicht : a.kracht;
+    if (a.kracht > 0 && typeof uitGewicht === 'number' && uitGewicht > 0 && a.kracht < uitGewicht) {
+      krachtN = uitGewicht;
+      meldingen.push('De opgegeven kracht (' + nlGetal(a.kracht, 0) + ' N) is lager dan de kracht uit gewicht, ' +
+        'geleiding en versnelling (' + nlGetal(uitGewicht, 0) + ' N). De tool rekent met ' +
+        nlGetal(uitGewicht, 0) + ' N.');
+    }
+    return { profiel: profiel, versnelling: versnelling, krachtN: krachtN, meldingen: meldingen };
+  }
+
   function naarAdviesInvoer(a, type) {
     // Elke niet-horizontale inbouw krijgt de remvlag — 'hoek' hoort daar
     // evengoed bij als 'verticaal' (bronnenonderzoek §5.3: "Een rem is
@@ -6263,22 +6359,11 @@ var WizardLogica = (function () {
     // (undefined) blijft horizontaal: dan is er domweg nog niets gezegd.
     var nietHorizontaal = a.orientatie === 'verticaal' || a.orientatie === 'hoek' ||
       a.orientatie === 'weetniet';
-    // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): zonder opgegeven
-    // kracht volgt hij uit gewicht, geleiding en versnelling. Alleen een
-    // uitdrukkelijk horizontale inbouw rekent met de geleidingswrijving; ook
-    // een nog onbeantwoorde inbouwvraag telt hier als de zware kant (m·g),
-    // anders zou een wizard die nog bij stap 4 is een te lichte last tonen.
-    // Een lege of onbruikbare versnelling (negatief, geen getal) telt als
-    // leeg: dan a = g, de zware kant.
-    var versnelling = typeof a.versnelling === 'number' && Number.isFinite(a.versnelling) &&
-      a.versnelling >= 0 ? a.versnelling : undefined;
-    var kracht = ontbreekt(a.kracht)
-      ? (ontbreekt(a.gewicht) ? undefined
-        // Een gewicht van 0 of minder geeft kracht 0, zodat Advies.kies() de
-        // gebruikelijke leesbare fout over de kracht werpt (zoals vóór v1.34).
-        : (a.gewicht > 0 ? Rekenkern.axialeKrachtUitGewicht(
-            a.gewicht, a.orientatie !== 'horizontaal', a.geleiding, versnelling) : 0))
-      : a.kracht;
+    // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34) en 2026-10-12-fb002-004
+    // §1 (v1.37): de kracht uit gewicht, geleiding en versnelling, en de
+    // controle van een opgegeven kracht daartegen — zie bewegingsControle().
+    var controle = bewegingsControle(a);
+    var kracht = controle.krachtN;
     // De vier bedrijfsurenvelden gaan altijd door, een leeg veld als
     // undefined (ruling reviewronde 1, 05-10-2026): leeg betekent overal
     // "minimaal 10.000 u", dus ook in de configurator mag een leeg veld niet
@@ -6306,6 +6391,8 @@ var WizardLogica = (function () {
         ? (ontbreekt(a.snelheid) ? 200 : SNELHEID_MM_S[a.snelheid])
         : a.snelheidMmS,
       krachtN: kracht,
+      // v1.37 (FB-002): meldingen over beweging en kracht, Advies.kies() toont ze.
+      bewegingMeldingen: controle.meldingen,
       overspanningMm: vrijeLengte(a),
       lagering: (ontbreekt(a.lagering) || a.lagering === 'weetniet') ? 'vast-los' : a.lagering,
       verticaal: nietHorizontaal,
@@ -6570,6 +6657,7 @@ var WizardLogica = (function () {
     belastingHerkomst: belastingHerkomst,
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
+    bewegingsControle: bewegingsControle,
     smeringOntbreekt: smeringOntbreekt,
     STAP8_MINIATUUR_TOELICHTING: STAP8_MINIATUUR_TOELICHTING,
     SIGNALEN: SIGNALEN,
@@ -6691,7 +6779,9 @@ var Offerte = (function () {
     aandrijfzijde: 'Aandrijfzijde',
     temperatuur: 'Werktemperatuur', coating: 'Coating',
     // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34).
-    geleiding: 'Type geleiding', versnelling: 'Versnelling'
+    geleiding: 'Type geleiding', versnelling: 'Versnelling',
+    // v1.37 (FB-002).
+    slagtijd: 'Tijd per slag (heenweg)'
   };
   var VOORSELECTIE_WAARDEN = {
     ja: 'ja', nee: 'nee', weetniet: 'weet ik niet', geen: 'geen',
@@ -7031,7 +7121,7 @@ var Offerte = (function () {
     toepassingRegels.forEach(function (r) { regels.push(r); });
     // v1.34: alleen de versnelling krijgt hier een eenheid; zonder 'm/s²' is
     // het kale getal niet te lezen.
-    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, cfg.voorselectie, { versnelling: ' m/s²' },
+    sectieRegels('VOORSELECTIE', VOORSELECTIE_LABELS, cfg.voorselectie, { versnelling: ' m/s²', slagtijd: ' s' },
       VOORSELECTIE_WAARDEN)
       .forEach(function (r) { regels.push(r); });
 
@@ -7219,7 +7309,7 @@ var Offerte = (function () {
   // eenhedenkaart mee. Voor de adviesaanvraag, die de enige Sales-leesbare
   // weergave van deze twee velden is (er is nog geen cfg om ze elders te
   // tonen), wel.
-  var VOORSELECTIE_EENHEID_ADVIES = { gewicht: ' kg', slag: ' mm', versnelling: ' m/s²' };
+  var VOORSELECTIE_EENHEID_ADVIES = { gewicht: ' kg', slag: ' mm', versnelling: ' m/s²', slagtijd: ' s' };
 
   // Adviesaanvraag bij hoge nauwkeurigheid (spec 2026-10-01-fscr-fscl-en-
   // precisie-ontwerp §3): stap 8 toont bij WizardLogica.vraagtEngineering()
@@ -7371,8 +7461,39 @@ var Afbeeldingen = (function () {
     koppeling: { ja: 'koppeling' }
   };
   function voorOptie(sleutel, waarde) {
+    if (sleutel === 'lagering') return lagerSchema(waarde);
     var tabel = WIZARD[sleutel];
     return tabel && tabel[waarde] ? beeld(tabel[waarde]) : null;
+  }
+
+  // Spec 2026-10-12-fb002-004 §3 (v1.37, FB-004): schema per
+  // lageropstelling, zoals in de catalogi getekend — spindel, moer, vast
+  // lager (twee lagers met kruis), los lager (één), vrij eind (geen lager).
+  // Getekend als SVG; links het eerste woord van de keuze, rechts het tweede.
+  var SCHEMA_KLEUR = { as: '#8a96ab', moer: '#0c2c65', lager: '#be0068', tekst: '#6b7a99' };
+  function lagerSymbool(x) {
+    return '<rect x="' + x + '" y="76" width="16" height="40" fill="#fff" stroke="' + SCHEMA_KLEUR.lager +
+      '" stroke-width="2.5"/><path d="M' + x + ' 76 L' + (x + 16) + ' 116 M' + (x + 16) + ' 76 L' + x +
+      ' 116" stroke="' + SCHEMA_KLEUR.lager + '" stroke-width="2"/>';
+  }
+  function lagerEinde(soort, links) {
+    if (soort === 'vast') return links ? lagerSymbool(34) + lagerSymbool(50) : lagerSymbool(234) + lagerSymbool(250);
+    if (soort === 'los') return links ? lagerSymbool(42) : lagerSymbool(242);
+    return '';
+  }
+  function lagerSchema(lagering) {
+    var delen = typeof lagering === 'string' ? lagering.split('-') : [];
+    var geldig = ['vast', 'los', 'vrij'];
+    if (delen.length !== 2 || geldig.indexOf(delen[0]) === -1 || geldig.indexOf(delen[1]) === -1) return null;
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 58 300 112">' +
+      '<rect x="30" y="92" width="240" height="8" rx="2" fill="' + SCHEMA_KLEUR.as + '"/>' +
+      '<rect x="134" y="74" width="32" height="44" rx="3" fill="' + SCHEMA_KLEUR.moer + '"/>' +
+      lagerEinde(delen[0], true) + lagerEinde(delen[1], false) +
+      '<g font-family="Helvetica, Arial, sans-serif" font-size="22" fill="' + SCHEMA_KLEUR.tekst + '">' +
+      '<text x="50" y="156" text-anchor="middle">' + delen[0] + '</text>' +
+      '<text x="250" y="156" text-anchor="middle">' + delen[1] + '</text>' +
+      '<text x="150" y="156" text-anchor="middle">moer</text></g></svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
 
   // Type spindel ('kogelomloop', 'trapezium', 'draadspindel').
@@ -9434,7 +9555,85 @@ var Afbeeldingen = (function () {
     return wrapper;
   }
 
+  // Spec 2026-10-12-fb002-004 §2 (v1.37, FB-003): de bedrijfsuren zijn
+  // "onbekend" zolang alle vier de velden leeg zijn; dan rekent de tool met
+  // minimaal 10.000 u en staan de balken en het jarenveld uit.
+  var WIZ_BEDRIJFSUREN_STANDAARD = { urenPerDag: 8, dagenPerWeek: 5, wekenPerJaar: 52, jaren: 5 };
+  function wizBedrijfsurenOnbekend() {
+    return Object.keys(WIZ_BEDRIJFSUREN_STANDAARD).every(function (k) {
+      var w = wizAntwoorden[k];
+      return w === undefined || w === null || w === '';
+    });
+  }
+
+  function wizBouwBedrijfsurenOnbekend() {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'wiz-qgroup';
+    var label = document.createElement('label');
+    label.className = 'wiz-onbekend';
+    var vink = document.createElement('input');
+    vink.type = 'checkbox';
+    vink.id = 'wizBedrijfsurenOnbekend';
+    vink.checked = wizBedrijfsurenOnbekend();
+    vink.addEventListener('change', function () {
+      Object.keys(WIZ_BEDRIJFSUREN_STANDAARD).forEach(function (k) {
+        wizAntwoorden[k] = vink.checked ? undefined : WIZ_BEDRIJFSUREN_STANDAARD[k];
+      });
+      wizRenderStap();
+    });
+    label.appendChild(vink);
+    label.appendChild(document.createTextNode('Weet ik nog niet — de tool rekent met minimaal 10.000 bedrijfsuren'));
+    wrapper.appendChild(label);
+    return wrapper;
+  }
+
+  function wizBouwSchuifVraag(vraag) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'wiz-qgroup';
+
+    var label = document.createElement('label');
+    label.className = 'wiz-qlabel';
+    label.setAttribute('for', 'wiz-' + vraag.sleutel);
+    label.textContent = vraag.tekst;
+    wrapper.appendChild(label);
+
+    var rij = document.createElement('div');
+    rij.className = 'wiz-schuif';
+    var input = document.createElement('input');
+    input.type = 'range';
+    input.id = 'wiz-' + vraag.sleutel;
+    input.min = String(vraag.min);
+    input.max = String(vraag.max);
+    input.step = '1';
+    var huidig = wizAntwoorden[vraag.sleutel];
+    var leeg = huidig === undefined || huidig === null || huidig === '';
+    input.value = String(leeg ? vraag.standaard : huidig);
+    input.disabled = wizBedrijfsurenOnbekend();
+    var uitvoer = document.createElement('output');
+    uitvoer.setAttribute('for', input.id);
+    var toon = function () { uitvoer.textContent = input.value + ' ' + (vraag.eenheid || ''); };
+    toon();
+    input.addEventListener('input', function () {
+      if (input.disabled) return; // uit zolang "Weet ik nog niet" aanstaat
+      wizAntwoorden[vraag.sleutel] = Number(input.value);
+      toon();
+      wizWerkVolgendeKnopBij();
+    });
+    rij.appendChild(input);
+    rij.appendChild(uitvoer);
+    wrapper.appendChild(rij);
+
+    if (vraag.hint) {
+      var hint = document.createElement('p');
+      hint.className = 'wiz-qhint';
+      hint.textContent = vraag.hint;
+      wrapper.appendChild(hint);
+    }
+    return wrapper;
+  }
+
   function wizBouwInvoerVraag(vraag) {
+    if (vraag.schuif) return wizBouwSchuifVraag(vraag);
     var wrapper = document.createElement('div');
     wrapper.className = 'wiz-qgroup';
 
@@ -9452,6 +9651,9 @@ var Afbeeldingen = (function () {
       if (vraag.sleutel === 'jaren') input.step = 'any';
     }
     input.id = 'wiz-' + vraag.sleutel;
+    // v1.37 (FB-003): het jarenveld hoort bij de bedrijfsuren en staat uit
+    // zolang die "onbekend" zijn.
+    if (vraag.sleutel === 'jaren') input.disabled = wizBedrijfsurenOnbekend();
     var huidig = wizAntwoorden[vraag.sleutel];
     if (huidig !== undefined && huidig !== null) input.value = huidig;
     input.addEventListener('input', function () {
@@ -10225,6 +10427,19 @@ var Afbeeldingen = (function () {
     if (volgendeKnop) {
       volgendeKnop.disabled = stap.vragen.some(wizVraagOnbeantwoord);
     }
+    wizWerkBewegingMeldingBij();
+  }
+
+  // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002): live onder de vragen van
+  // stap 4 — beweging (slag, snelheid, versnelling, tijd) en kracht die niet
+  // samen kunnen. Alleen een waarschuwing; de klant kan gewoon verder.
+  function wizWerkBewegingMeldingBij() {
+    var vak = document.getElementById('wizBewegingMelding');
+    if (!vak) return;
+    vak.innerHTML = ''; // wist de container; geen data hierin
+    WizardLogica.bewegingsControle(wizAntwoordenVoorAdvies()).meldingen.forEach(function (tekst) {
+      vak.appendChild(wizAlert(tekst, null));
+    });
   }
 
   function wizGoTo(index) {
@@ -10271,8 +10486,11 @@ var Afbeeldingen = (function () {
     // Vragen met dezelfde groep (v1.20: "Bedrijfsuren") staan onder één kop,
     // met eventueel één regel uitleg eronder.
     var WIZ_GROEP_UITLEG = {
-      'Bedrijfsuren (optioneel)': 'Weet u dit nog niet precies? Laat de velden leeg; de tool rekent dan ' +
-        'met het minimum van 10.000 bedrijfsuren.'
+      'Bedrijfsuren (optioneel)': 'Weet u dit nog niet precies? Laat het vinkje hieronder aan; de tool rekent dan ' +
+        'met het minimum van 10.000 bedrijfsuren.',
+      // v1.37 (FB-002).
+      'Beweging (heenweg)': 'Vul in wat u weet. De tool controleert of slag, snelheid, versnelling en tijd ' +
+        'samen kunnen, en rekent zo nodig de versnelling uit.'
     };
     var vorigeGroep = null;
     stap.vragen.forEach(function (vraag) {
@@ -10288,10 +10506,17 @@ var Afbeeldingen = (function () {
           groepUitleg.textContent = WIZ_GROEP_UITLEG[vraag.groep];
           wizContainer.appendChild(groepUitleg);
         }
+        if (vraag.groep === 'Bedrijfsuren (optioneel)') wizContainer.appendChild(wizBouwBedrijfsurenOnbekend());
       }
       vorigeGroep = vraag.groep || null;
       wizContainer.appendChild(wizBouwVraag(vraag));
     });
+    if (stap.vragen.some(function (v) { return v.sleutel === 'slagtijd'; })) {
+      var bewegingMelding = document.createElement('div');
+      bewegingMelding.id = 'wizBewegingMelding';
+      bewegingMelding.setAttribute('aria-live', 'polite');
+      wizContainer.appendChild(bewegingMelding);
+    }
 
     if (stap.nummer === stappen.length) {
       // Laatste stap: geen "volgende", eigen navigatie (zie wizRenderResultaat).
