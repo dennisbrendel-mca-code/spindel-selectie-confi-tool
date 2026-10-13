@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.48  13-10-2026  Inschakelduur trapezium: hoogstens 20 % per 10 minuten (was tot 100 %), weergave per 10 minuten, melding bij regelmatig en continu bedrijf
   1.47  13-10-2026  Type geleiding: kogelomloopgeleiding omvat ook lineaire kogellagers (kogelbussen) op een geharde as
   1.46  13-10-2026  Review groep B: L voor linkse draad in de bestelcode; lagerunits bij trapeziumdiameters zoals kogelomloop; meldingen bij zwak vastlager, droog bedrijf en hoge tolerantie; rode samenvatting als een toets faalt; handbediend; stap 4 gesplitst; labels aangenomen/berekend; legenda; max. slag; vaste knoppen in het offertevenster
   1.45  12-10-2026  Review groep A: advies rekent met slag + moerlengte; typewissel, uitgangspunt zonder passende maat, leesbare foutmeldingen, lengtecontrole, telefoonkopbalk, toetsenbord in de wizard, contrast
@@ -440,7 +441,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.47 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.48 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3281,11 +3282,24 @@ var Rekenkern = (function () {
   // melding van v1.34): bij regelmatig of continu bedrijf en een toelaatbare
   // inschakelduur onder 100 % (zie inschakelduurUitPV) een melding met het
   // berekende percentage. Anders null.
+  // v1.48 (opdrachtgever 13-10-2026): de inschakelduur geldt per 10 minuten
+  // en is bij trapezium nooit 100 %, dus bij regelmatig of continu bedrijf
+  // altijd de melding.
   function inschakelduurTekst(edMax, bedrijf) {
     if (bedrijf !== 'regelmatig' && bedrijf !== 'continu') return null;
     if (typeof edMax !== 'number' || edMax >= 100) return null;
-    return 'Bij deze belasting en snelheid is de toelaatbare inschakelduur van de trapeziumspindel ' +
-      'circa ' + edMax + ' %. Is de inschakelduur hoger, dan adviseren wij een kogelomloopspindel.';
+    return 'De toelaatbare inschakelduur van de trapeziumspindel is bij deze belasting en snelheid circa ' +
+      edMax + ' %: maximaal ' + edPer10Min(edMax) + ', daarna moet de spindel afkoelen. ' +
+      'Draait hij langer, dan adviseren wij een kogelomloopspindel.';
+  }
+
+  // De inschakelduur als bewegingstijd per periode van 10 minuten.
+  function edPer10Min(ed) {
+    var seconden = Math.round(ed / 100 * 600);
+    var tijd = seconden >= 60 && seconden % 60 === 0
+      ? (seconden / 60) + (seconden === 60 ? ' minuut' : ' minuten')
+      : seconden + ' seconden';
+    return tijd + ' bewegen per 10 minuten';
   }
 
   // ── v1.35: trapezium zoals het rekenprogramma van MCA (MCAlc) ───────────
@@ -3343,11 +3357,16 @@ var Rekenkern = (function () {
   }
 
   // Toelaatbare inschakelduur uit de PV-waarde, als opzoektabel zoals MCAlc
-  // (0 → 100 %, 21 → 10 %, 250 → 1 %; PV 308,6 → 1 %), met het smeeradvies.
+  // (21 → 10 %, 250 → 1 %; PV 308,6 → 1 %), met het smeeradvies.
+  // v1.48 (opdrachtgever 13-10-2026, MCA-artikel "Hoe kies je de juiste
+  // aandrijving"): door de wrijvingswarmte is de inschakelduur van een
+  // trapeziumspindel beperkt tot circa 20 à 30 % per 10 minuten. MCAlc gaf
+  // onder PV 21 nog 100 %; de tool houdt daar 20 % aan, de veilige kant.
+  var ED_MAX_TRAPEZIUM = 20;
   var ED_TABEL = [
     { vanaf: 250, ed: 1, smering: 'continu smering vereist' },
     { vanaf: 21, ed: 10, smering: 'let op de smeerintervallen' },
-    { vanaf: 0, ed: 100, smering: 'periodiek smeren' }
+    { vanaf: 0, ed: ED_MAX_TRAPEZIUM, smering: 'periodiek smeren' }
   ];
   function inschakelduurUitPV(pv) {
     if (typeof pv !== 'number' || !Number.isFinite(pv) || pv < 0) {
@@ -3650,6 +3669,8 @@ var Rekenkern = (function () {
     smeeradvies: smeeradvies,
     GELEIDING_MU: GELEIDING_MU,
     axialeKrachtUitGewicht: axialeKrachtUitGewicht,
+    edPer10Min: edPer10Min,
+    ED_MAX_TRAPEZIUM: ED_MAX_TRAPEZIUM,
     inschakelduurTekst: inschakelduurTekst,
     P_MAX_METAAL: P_MAX_METAAL,
     P_MAX_KUNSTSTOF: P_MAX_KUNSTSTOF,
@@ -5574,7 +5595,8 @@ var WizardLogica = (function () {
           ' N/mm² (toelaatbaar bij ' + nlGetal(c.vgTabel, 1) + ' m/s: ' + nlGetal(c.pMax, 1) + ' N/mm²)',
         ok: !!c.vlaktedrukOk },
       { label: 'Toelaatbare inschakelduur',
-        tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % (' + c.edSmering + ')', ok: null }
+        tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % (max. ' + Rekenkern.edPer10Min(c.edMax) + '; ' +
+          c.edSmering + ')', ok: null }
     ];
   }
 
@@ -7368,7 +7390,8 @@ var Offerte = (function () {
           (grenzen.vlaktedrukOk ? 'voldoet' : 'grens overschreden') + ')');
       }
       if (typeof grenzen.edMax === 'number') {
-        regels.push('Toelaatbare inschakelduur: ' + grenzen.edMax + ' % (PV-waarde ' + fmt(grenzen.pvWaarde, 0) +
+        regels.push('Toelaatbare inschakelduur: ' + grenzen.edMax + ' % (max. ' + Rekenkern.edPer10Min(grenzen.edMax) +
+          '; PV-waarde ' + fmt(grenzen.pvWaarde, 0) +
           ' N/mm²·m/min, f_i ' + fmt(grenzen.fi, 2) + '); ' + grenzen.edSmering);
       }
       // Niet elke trapeziummaat staat in de BFM-draaggetaltabel (bijv.
@@ -9271,17 +9294,10 @@ var Afbeeldingen = (function () {
         // v1.45: boven de tabel geen "0,0 N/mm²; veiligheid 0,00".
         : 'de glijsnelheid ligt boven de tabel voor dit moermateriaal') + ')',
       r.vlaktedrukOk));
-    inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (' + edPerUur(r.edMax) +
+    inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (max. ' + Rekenkern.edPer10Min(r.edMax) +
       '; PV-waarde ' + fmt(r.pvWaarde, 0) + ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
   }
 
-  // v1.46 (review B5): de inschakelduur ook als tijd per uur.
-  function edPerUur(ed) {
-    if (ed >= 100) return 'continu';
-    var seconden = Math.round(ed / 100 * 3600);
-    return 'circa ' + (seconden >= 60 ? Math.round(seconden / 60) + ' minuten' : seconden + ' seconden') +
-      ' per uur';
-  }
 
   // v1.46 (review B5): uitleg bij de tekens en afkortingen in de grenzen.
   function grenzenLegenda(type) {
