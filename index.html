@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.52  13-10-2026  Bewegingsprofiel als geavanceerde optie (wizard en configurator): levensduur met gemiddelde last en snelheid, inschakelduur trapezium als toets, fasen in de offerte
   1.51  13-10-2026  Besluiten controle: kracht horizontaal µ·m·g + F_extern + m·a (standaard 2 m/s²), opgegeven kracht telt bij het gewicht op; 50 mm uitloop tussen de lagers; trapeziumkoppel met 1,07·µ zoals MCAlc; WBK als het standaard vastlager te zwak is
   1.50  13-10-2026  Controle rekenuitkomsten: lagerunits volgen de lagering (vast-vast), lagerzitting binnen de kerndiameter bij trapezium, eigen draaggetal BRM/BSM, kritisch toerental lead screw volgens de catalogus, juiste teksten bij "weet ik niet" en C dyn
   1.49  13-10-2026  Inschakelduur trapezium met kunststof moer hoogstens 10 % per 10 minuten; advies brons met smering of kogelomloop bij intensief gebruik
@@ -199,6 +200,17 @@ h1, h2, h3, .kop {
 
 /* ── Formuliervelden ── */
 .veld { margin-bottom: 12px; min-width: 0; }
+/* v1.52: bewegingsprofiel */
+.profiel-editor { margin: 6px 0 16px; padding: 12px; border: 1.5px dashed var(--rand); border-radius: 6px; }
+.profiel-vink { font-weight: 600; color: var(--motion); display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.profiel-schuif { overflow-x: auto; max-width: 100%; }
+.profiel-tabel { border-collapse: collapse; width: 100%; min-width: 420px; margin: 8px 0; font-size: .85rem; }
+.profiel-tabel th { text-align: left; font-weight: 600; color: var(--gedempt); padding: 4px; }
+.profiel-tabel td { padding: 3px 4px; }
+.profiel-tabel input { width: 100%; min-width: 0; padding: 5px 6px; border: 1.5px solid var(--rand); border-radius: 4px; font: inherit; }
+.profiel-tabel td:first-child input { min-width: 110px; }
+.profiel-weg { padding: 2px 8px; }
+.profiel-knoppen { display: flex; flex-wrap: wrap; gap: 8px; }
 .veld:last-child { margin-bottom: 0; }
 .veld label {
   display: block; font-size: .74rem; font-weight: 600; color: var(--motion);
@@ -444,7 +456,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.51 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.52 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2561,6 +2573,7 @@ var ConfiguratorLogica = (function () {
       toets(r.knikOk, 'de knikbelasting');
       toets(r.vlaktedrukOk, 'de vlaktedruk op de moer');
       toets(r.krachtOk, 'het draaggetal van de moer');
+      toets(r.edOk, 'de inschakelduur volgens het bewegingsprofiel');
     } else if (r.type === 'draadspindel') {
       toets(r.toerentalOk, 'het kritisch toerental');
       toets(r.slankheidOk, 'de vrije lengte');
@@ -2582,6 +2595,13 @@ var ConfiguratorLogica = (function () {
     }
     if (!belasting || typeof belasting !== 'object') {
       throw new Error('belasting ontbreekt of is geen object, kreeg ' + belasting);
+    }
+    // v1.52: met een bewegingsprofiel rekenen knik, statische toets, kritisch
+    // toerental en vlaktedruk met de zwaarste fase.
+    var profielVoorToets = Rekenkern.profielSamenvatting(belasting.profiel);
+    if (profielVoorToets) {
+      belasting = Object.assign({}, belasting, { krachtN: profielVoorToets.krachtMaxN,
+        snelheidMmPerSec: profielVoorToets.snelheidMaxMmS });
     }
     valideerPositief(belasting.krachtN, 'krachtN');
     valideerPositief(belasting.snelheidMmPerSec, 'snelheidMmPerSec');
@@ -2647,9 +2667,12 @@ var ConfiguratorLogica = (function () {
       // De letterlijke aannamemelding bij 'onbekend' (spec §2.4), anders null.
       uitK.fsMelding = eisen.veiligheid.melding;
       uitK.fw = Rekenkern.belastingsfactor(belasting.snelheidMmPerSec);
+      var profielK = Rekenkern.profielSamenvatting(belasting.profiel);
+      if (profielK) uitK.profiel = profielK;
       if (cDyn !== null) {
-        uitK.levensduurUren = Rekenkern.levensduurUren(
-          Rekenkern.levensduur(cDyn, belasting.krachtN, uitK.fw), n);
+        // v1.52: met een bewegingsprofiel de gemiddelde last en het gemiddelde toerental.
+        uitK.levensduurUren = profielK ? Rekenkern.levensduurUitProfiel(cDyn, profielK, uitK.fw, cfg.P)
+          : Rekenkern.levensduurUren(Rekenkern.levensduur(cDyn, belasting.krachtN, uitK.fw), n);
         uitK.levensduurOk = uitK.levensduurUren >= eisen.vereisteUren;
       }
       var c0a = Catalogus.moerStatisch('kogelomloop', cfg.moertype, cfg.d, cfg.P);
@@ -2739,6 +2762,12 @@ var ConfiguratorLogica = (function () {
         fi: druk.fi,
         pvWaarde: druk.pvWaarde,
         edMax: druk.edMax,
+        // v1.52: met een bewegingsprofiel de werkelijke inschakelduur als toets.
+        profiel: Rekenkern.profielSamenvatting(belasting.profiel),
+        edWerkelijk: Rekenkern.profielSamenvatting(belasting.profiel)
+          ? Rekenkern.profielSamenvatting(belasting.profiel).edProcent : undefined,
+        edOk: Rekenkern.profielSamenvatting(belasting.profiel)
+          ? Rekenkern.profielSamenvatting(belasting.profiel).edProcent <= druk.edMax : undefined,
         // v1.45: geen smeeradvies bij een droge, zelfsmerende moer.
         edSmering: belasting.smering === 'droog' && Rekenkern.zelfsmerend('trapezium', belasting.moermateriaal)
           ? 'droog met zelfsmerende moer' : druk.edSmering,
@@ -3540,6 +3569,82 @@ var Rekenkern = (function () {
     return omwentelingen / (60 * n);
   }
 
+  // ── v1.52: bewegingsprofiel (besluit opdrachtgever 13-10-2026) ─────────
+  // Fasen per cyclus { krachtN, snelheidMmS, duurS }; een pauze heeft
+  // snelheid 0. Volgens ISO 3408-5 (en MCAlc): gemiddelde last
+  // F_m = ∛(Σ F³·n·t / Σ n·t) en gemiddeld toerental n_m = Σ n·t / Σ t. Met n =
+  // 60·v/P valt de spoed weg uit F_m; n_m volgt uit de gemiddelde snelheid.
+  // Ongeldige of lege rijen tellen niet mee; zonder bewegende fase null.
+  function getalVan(x) { return typeof x === 'number' && Number.isFinite(x) ? x : NaN; }
+  function profielSamenvatting(fasen) {
+    if (!Array.isArray(fasen)) return null;
+    var geldig = fasen.filter(function (f) {
+      return f && getalVan(f.duurS) > 0 && getalVan(f.krachtN) >= 0 && getalVan(f.snelheidMmS) >= 0;
+    });
+    var cyclus = 0, beweging = 0, vt = 0, f3vt = 0, fMax = 0, vMax = 0;
+    geldig.forEach(function (f) {
+      cyclus += f.duurS;
+      if (f.snelheidMmS > 0) beweging += f.duurS;
+      vt += f.snelheidMmS * f.duurS;
+      f3vt += Math.pow(f.krachtN, 3) * f.snelheidMmS * f.duurS;
+      fMax = Math.max(fMax, f.krachtN);
+      vMax = Math.max(vMax, f.snelheidMmS);
+    });
+    if (!(beweging > 0) || !(vt > 0)) return null;
+    return {
+      fasen: geldig,
+      cyclusS: cyclus,
+      bewegingS: beweging,
+      edProcent: beweging / cyclus * 100,
+      krachtMaxN: fMax,
+      snelheidMaxMmS: vMax,
+      snelheidGemMmS: vt / cyclus,
+      krachtGemN: Math.cbrt(f3vt / vt)
+    };
+  }
+
+  // Levensduur in uren met de gemiddelde last en het gemiddelde toerental.
+  function levensduurUitProfiel(cDynKN, profiel, fw, P) {
+    var F = Math.max(profiel.krachtGemN, 1); // geen deling door 0 bij een onbelast profiel
+    return levensduurUren(levensduur(cDynKN, F, fw), 60 * profiel.snelheidGemMmS / P);
+  }
+
+  // Voorstel voor de fasen uit slag, snelheid en versnelling: heen versnellen,
+  // constant, afremmen; terug hetzelfde; dan de pauze. Krachten volgens de
+  // MCA-catalogus p.40: basiskracht ± m·a. Horizontaal: µ·m·g + F_extern heen,
+  // terug zonder de externe kracht; verticaal: m·g, terug omlaag met
+  // omgekeerd teken van m·a. Kan de snelheid niet gehaald worden, dan een
+  // driehoeksprofiel (geen constante fase).
+  function profielVoorstel(p) {
+    var S = getalVan(p.slagMm), v = getalVan(p.snelheidMmS);
+    if (!(S > 0) || !(v > 0)) return null;
+    var aMs2 = getalVan(p.versnellingMs2) > 0 ? p.versnellingMs2 : null;
+    var m = getalVan(p.massaKg) > 0 ? p.massaKg : 0;
+    var ext = getalVan(p.krachtExternN) > 0 ? p.krachtExternN : 0;
+    var gewicht = m > 0 ? (p.verticaal ? m * ZWAARTEKRACHT : (getalVan(p.mu) > 0 ? p.mu : GELEIDING_MU.weetniet) * m * ZWAARTEKRACHT) : 0;
+    var heen = ext + gewicht, terug = gewicht;
+    var rond = function (x) { return Math.round(x * 100) / 100; };
+    var fasen = [];
+    function rit(naam, basis, teken) {
+      if (aMs2 === null) {
+        fasen.push({ fase: naam.charAt(0).toUpperCase() + naam.slice(1), krachtN: rond(basis), snelheidMmS: rond(v), duurS: rond(S / v) });
+        return;
+      }
+      var a = aMs2 * 1000;
+      var vTop = S >= v * v / a ? v : Math.sqrt(S * a);
+      var tA = vTop / a, tC = S >= v * v / a ? (S - v * v / a) / v : 0;
+      var ma = m * aMs2;
+      fasen.push({ fase: 'Versnellen ' + naam, krachtN: rond(Math.abs(basis + teken * ma)), snelheidMmS: rond(vTop / 2), duurS: rond(tA) });
+      if (tC > 0) fasen.push({ fase: 'Constant ' + naam, krachtN: rond(basis), snelheidMmS: rond(v), duurS: rond(tC) });
+      fasen.push({ fase: 'Afremmen ' + naam, krachtN: rond(Math.abs(basis - teken * ma)), snelheidMmS: rond(vTop / 2), duurS: rond(tA) });
+    }
+    rit('heen', heen, 1);
+    rit('terug', terug, p.verticaal ? -1 : 1);
+    var pauze = getalVan(p.pauzeS) > 0 ? p.pauzeS : 0;
+    fasen.push({ fase: 'Pauze', krachtN: 0, snelheidMmS: 0, duurS: rond(pauze) });
+    return fasen;
+  }
+
   // Statische toets (MCA p.39; leverancierscatalogus technische informatie
   // p.12): F ≤ C_0a / f_s. De grens zelf telt nog als goed.
   function statischOk(krachtN, c0aKN, fs) {
@@ -3732,6 +3837,9 @@ var Rekenkern = (function () {
     FS_AANNAME_MELDING: FS_AANNAME_MELDING,
     belastingsfactor: belastingsfactor,
     levensduur: levensduur,
+    profielSamenvatting: profielSamenvatting,
+    levensduurUitProfiel: levensduurUitProfiel,
+    profielVoorstel: profielVoorstel,
     levensduurUren: levensduurUren,
     levensduurTekst: levensduurTekst,
     statischOk: statischOk,
@@ -4057,7 +4165,10 @@ var Advies = (function () {
     var c0 = Catalogus.moerStatisch('kogelomloop', code, m.d, m.P);
     if (c === null || c0 === null) return null;
     var fw = Rekenkern.belastingsfactor(invoer.snelheidMmPerSec);
-    var uren = Rekenkern.levensduurUren(Rekenkern.levensduur(c, invoer.krachtN, fw), n);
+    // v1.52: met een bewegingsprofiel de gemiddelde last en het gemiddelde toerental.
+    var profiel = Rekenkern.profielSamenvatting(invoer.profiel);
+    var uren = profiel ? Rekenkern.levensduurUitProfiel(c, profiel, fw, m.P)
+      : Rekenkern.levensduurUren(Rekenkern.levensduur(c, invoer.krachtN, fw), n);
     var dnGrens = Catalogus.moerDnGrens(code, m.d, m.P);
     var dn = m.d * n;
     var t = {
@@ -4346,6 +4457,13 @@ var Advies = (function () {
         uitkomst.zelfremming = Rekenkern.zelfremklasse(m.phi, invoer.moermateriaal);
         uitkomst.cDynBFM = m.cDynBFM;
         if (!drukT.vlaktedrukOk || !Rekenkern.draaggetalOk(invoer.krachtN, m.cDynBFM)) continue;
+        // v1.52: met een bewegingsprofiel is de inschakelduur een toets.
+        var profielT = Rekenkern.profielSamenvatting(invoer.profiel);
+        if (profielT) {
+          uitkomst.edWerkelijk = profielT.edProcent;
+          uitkomst.edOk = profielT.edProcent <= drukT.edMax;
+          if (!uitkomst.edOk) continue;
+        }
       }
 
       gekozen = m;
@@ -4467,7 +4585,9 @@ var Advies = (function () {
     // Spec 2026-10-09-trapezium-mcalc §2.3 (v1.35, vervangt de vaste melding
     // van v1.34): de toelaatbare inschakelduur uit de PV-waarde. Melding bij
     // regelmatig of continu bedrijf, zodra die onder 100 % ligt.
-    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf, invoer.moermateriaal)) {
+    // v1.52: met een bewegingsprofiel is de inschakelduur een echte toets (edOk), geen melding.
+    if (invoer.type === 'trapezium' && !Rekenkern.profielSamenvatting(invoer.profiel) &&
+        Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf, invoer.moermateriaal)) {
       waarschuwingen.push({ ernst: 'info',
         tekst: Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf, invoer.moermateriaal) });
     }
@@ -5680,7 +5800,8 @@ var WizardLogica = (function () {
       { label: 'Toelaatbare inschakelduur',
         tekst: 'Toelaatbare inschakelduur: ' + c.edMax + ' % (max. ' + Rekenkern.edPer10Min(c.edMax) + '; ' +
           c.edSmering + ')', ok: null }
-    ];
+    ].concat(typeof c.edWerkelijk === 'number' ? [{ label: 'Inschakelduur bewegingsprofiel',
+      tekst: 'Inschakelduur volgens het bewegingsprofiel: ' + nlGetal(c.edWerkelijk, 0) + ' %', ok: !!c.edOk }] : []);
   }
 
   function passendeTypen(antwoorden) {
@@ -6837,6 +6958,33 @@ var WizardLogica = (function () {
       spelingsvrij: a.spelingsvrij,
       coating: a.coating === 'ongecoat' ? 'U' : 'T',
       temperatuur: a.temperatuur
+    }, profielInvoer(a));
+  }
+
+  // v1.52 (besluit opdrachtgever 13-10-2026): het bewegingsprofiel als
+  // geavanceerde optie. Staat het aan en heeft het een bewegende fase, dan
+  // gaan de fasen mee; knik, statische toets, kritisch toerental en
+  // vlaktedruk rekenen met de zwaarste fase (hoogste kracht en snelheid).
+  function profielInvoer(a) {
+    if (!a.profielAan) return {};
+    var samenvatting = Rekenkern.profielSamenvatting(a.profiel);
+    if (!samenvatting) return {};
+    return { profiel: samenvatting.fasen, krachtN: samenvatting.krachtMaxN,
+      snelheidMmPerSec: samenvatting.snelheidMaxMmS };
+  }
+
+  // Het voorstel voor de fasen uit de antwoorden van stap 4.
+  function profielVoorstelUitAntwoorden(a) {
+    var controle = bewegingsControle(a);
+    var snelheid = ontbreekt(a.snelheidMmS)
+      ? (ontbreekt(a.snelheid) ? undefined : SNELHEID_MM_S[a.snelheid]) : a.snelheidMmS;
+    return Rekenkern.profielVoorstel({
+      slagMm: a.slag, snelheidMmS: snelheid,
+      versnellingMs2: controle.versnelling !== undefined ? controle.versnelling
+        : (a.orientatie === 'horizontaal' ? Rekenkern.VERSNELLING_STANDAARD_HORIZONTAAL : 9.81),
+      massaKg: a.gewicht, krachtExternN: a.kracht,
+      verticaal: a.orientatie !== 'horizontaal', mu: Rekenkern.GELEIDING_MU[a.geleiding],
+      pauzeS: 0
     });
   }
 
@@ -7174,6 +7322,7 @@ var WizardLogica = (function () {
     vraagtEngineering: vraagtEngineering,
     bewegingsControle: bewegingsControle,
     smeringMelding: smeringMelding,
+    profielVoorstelUitAntwoorden: profielVoorstelUitAntwoorden,
     precisieMelding: precisieMelding,
     smeringOntbreekt: smeringOntbreekt,
     STAP8_MINIATUUR_TOELICHTING: STAP8_MINIATUUR_TOELICHTING,
@@ -7634,6 +7783,17 @@ var Offerte = (function () {
     }
 
     var toepassingRegels = sectieRegels('TOEPASSING', TOEPASSING_LABELS, cfg.toepassing, TOEPASSING_EENHEID, null);
+    // v1.52: het bewegingsprofiel per fase, met de gemiddelden.
+    var profielS = cfg.toepassing ? Rekenkern.profielSamenvatting(cfg.toepassing.profiel) : null;
+    if (profielS) {
+      if (!toepassingRegels.length) toepassingRegels = ['', 'TOEPASSING'];
+      toepassingRegels.push('Bewegingsprofiel: gemiddelde last ' + fmt(profielS.krachtGemN, 0) + ' N, gemiddelde snelheid ' +
+        fmt(profielS.snelheidGemMmS, 0) + ' mm/s, bewegingsaandeel ' + fmt(profielS.edProcent, 0) + ' %');
+      profielS.fasen.forEach(function (f, i) {
+        toepassingRegels.push('  Fase ' + (i + 1) + (f.fase ? ' (' + f.fase + ')' : '') + ': ' + fmt(f.krachtN, 0) + ' N, ' +
+          fmt(f.snelheidMmS, 0) + ' mm/s, ' + fmt(f.duurS, 2) + ' s');
+      });
+    }
     var toepassingExtra = kogelToepassingExtra(cfg.grenzen);
     if (toepassingExtra.length) {
       if (!toepassingRegels.length) toepassingRegels = ['', 'TOEPASSING'];
@@ -9152,6 +9312,125 @@ var Afbeeldingen = (function () {
     return wrapper;
   }
 
+  // ── v1.52: bewegingsprofiel (geavanceerd) ───────────────────────────
+  // Eén tabel voor wizard en configurator. o: { id, aan, rijen, vulIn() →
+  // rijen of null, opWijziging(aan, rijen) }. Alle tekst via textContent.
+  var PROFIEL_MAX_RIJEN = 8;
+  function bouwProfielEditor(o) {
+    var staat = { aan: !!o.aan, rijen: (o.rijen || []).map(function (r) { return Object.assign({}, r); }) };
+    var wrapper = document.createElement('div');
+    wrapper.className = 'profiel-editor';
+    wrapper.id = o.id;
+    function getal(x) { return x === '' || x === null || x === undefined ? NaN : Number(String(x).replace(',', '.')); }
+    function meld() { o.opWijziging(staat.aan, staat.rijen); }
+    function samenvattingTekst() {
+      var sv = Rekenkern.profielSamenvatting(staat.rijen);
+      if (!sv) return 'Vul minstens één fase met een snelheid en een duur in; tot dan rekent de tool met onafgebroken beweging.';
+      return 'Gemiddelde last ' + fmtDuizend(sv.krachtGemN) + ' N · gemiddelde snelheid ' + fmtDuizend(sv.snelheidGemMmS) +
+        ' mm/s · bewegingsaandeel ' + fmt(sv.edProcent, 0) + ' % (' + Rekenkern.edPer10Min(Math.min(sv.edProcent, 100)) +
+        '). Knik en toerental rekenen met de zwaarste fase: ' + fmtDuizend(sv.krachtMaxN) + ' N, ' +
+        fmtDuizend(sv.snelheidMaxMmS) + ' mm/s.';
+    }
+    function teken() {
+      wrapper.innerHTML = ''; // wist de container; alles hieronder via textContent
+      var label = document.createElement('label');
+      label.className = 'profiel-vink';
+      var vink = document.createElement('input');
+      vink.type = 'checkbox';
+      vink.id = o.id + '-aan';
+      vink.checked = staat.aan;
+      vink.addEventListener('change', function () { staat.aan = vink.checked; teken(); meld(); });
+      label.appendChild(vink);
+      label.appendChild(document.createTextNode(' Bewegingsprofiel opgeven (geavanceerd)'));
+      wrapper.appendChild(label);
+      var uitleg = document.createElement('p');
+      uitleg.className = 'toelichting';
+      uitleg.textContent = staat.aan
+        ? 'Geef per fase van één cyclus de kracht, de snelheid en de duur. Een pauze heeft snelheid 0. De levensduur ' +
+          'rekent dan met de gemiddelde last en snelheid; bij trapezium wordt de inschakelduur getoetst.'
+        : 'Uit: de tool rekent alsof de spindel onafgebroken beweegt met de opgegeven kracht en snelheid.';
+      wrapper.appendChild(uitleg);
+      if (!staat.aan) return;
+      var tabel = document.createElement('table');
+      tabel.className = 'profiel-tabel';
+      var kop = document.createElement('tr');
+      ['Fase', 'Kracht (N)', 'Snelheid (mm/s)', 'Duur (s)', ''].forEach(function (t) {
+        var th = document.createElement('th'); th.textContent = t; kop.appendChild(th);
+      });
+      tabel.appendChild(kop);
+      staat.rijen.forEach(function (rij, i) {
+        var tr = document.createElement('tr');
+        [['fase', 'text'], ['krachtN', 'number'], ['snelheidMmS', 'number'], ['duurS', 'number']].forEach(function (k) {
+          var td = document.createElement('td');
+          var inp = document.createElement('input');
+          inp.type = k[1];
+          if (k[1] === 'number') { inp.min = '0'; inp.step = 'any'; inp.inputMode = 'decimal'; }
+          inp.id = o.id + '-' + i + '-' + k[0];
+          inp.setAttribute('aria-label', (k[0] === 'fase' ? 'Fase' : k[0] === 'krachtN' ? 'Kracht' :
+            k[0] === 'snelheidMmS' ? 'Snelheid' : 'Duur') + ' fase ' + (i + 1));
+          var w = rij[k[0]];
+          inp.value = w === undefined || w === null || (typeof w === 'number' && !Number.isFinite(w)) ? '' : String(w);
+          inp.addEventListener('input', function () {
+            rij[k[0]] = k[1] === 'number' ? getal(inp.value) : inp.value;
+            samenvatting.textContent = samenvattingTekst();
+            meld();
+          });
+          td.appendChild(inp);
+          tr.appendChild(td);
+        });
+        var tdWeg = document.createElement('td');
+        var weg = document.createElement('button');
+        weg.type = 'button';
+        weg.className = 'knop knop-ghost profiel-weg';
+        weg.textContent = '✕';
+        weg.setAttribute('aria-label', 'Fase ' + (i + 1) + ' verwijderen');
+        weg.addEventListener('click', function () { staat.rijen.splice(i, 1); teken(); meld(); });
+        tdWeg.appendChild(weg);
+        tr.appendChild(tdWeg);
+        tabel.appendChild(tr);
+      });
+      var schuif = document.createElement('div');
+      schuif.className = 'profiel-schuif';
+      schuif.appendChild(tabel);
+      wrapper.appendChild(schuif);
+      var knoppen = document.createElement('div');
+      knoppen.className = 'profiel-knoppen';
+      var erbij = document.createElement('button');
+      erbij.type = 'button';
+      erbij.className = 'knop knop-ghost';
+      erbij.id = o.id + '-erbij';
+      erbij.textContent = 'Fase toevoegen';
+      erbij.disabled = staat.rijen.length >= PROFIEL_MAX_RIJEN;
+      erbij.addEventListener('click', function () {
+        staat.rijen.push({ fase: '', krachtN: NaN, snelheidMmS: NaN, duurS: NaN }); teken(); meld();
+      });
+      knoppen.appendChild(erbij);
+      var vul = document.createElement('button');
+      vul.type = 'button';
+      vul.className = 'knop knop-ghost';
+      vul.id = o.id + '-vulin';
+      vul.textContent = 'Vul in uit slag, snelheid en versnelling';
+      vul.addEventListener('click', function () {
+        var voorstel = o.vulIn();
+        if (!voorstel) { samenvatting.textContent = 'Vul eerst de slag en de snelheid in.'; return; }
+        staat.rijen = voorstel; teken(); meld();
+      });
+      knoppen.appendChild(vul);
+      wrapper.appendChild(knoppen);
+      var samenvatting = document.createElement('p');
+      samenvatting.className = 'toelichting';
+      samenvatting.id = o.id + '-samenvatting';
+      samenvatting.setAttribute('aria-live', 'polite');
+      samenvatting.textContent = samenvattingTekst();
+      wrapper.appendChild(samenvatting);
+    }
+    teken();
+    return wrapper;
+  }
+
+  // Het profiel van de configurator (blijft staan bij een typewissel).
+  var configuratorProfiel = { aan: false, rijen: [] };
+
   function bouwBelastingContainer(type, waarden) {
     belastingContainer.innerHTML = '';
     ConfiguratorLogica.belastingVelden(type).forEach(function (veld) {
@@ -9170,6 +9449,16 @@ var Afbeeldingen = (function () {
       }
       belastingContainer.appendChild(wrapper);
     });
+    if (Array.isArray(waarden.profiel)) configuratorProfiel = { aan: true, rijen: waarden.profiel };
+    belastingContainer.appendChild(bouwProfielEditor({
+      id: 'configProfiel', aan: configuratorProfiel.aan, rijen: configuratorProfiel.rijen,
+      vulIn: function () {
+        var waarde = function (naam) { var el = document.getElementById('belasting-' + naam); return el && el.value !== '' ? Number(el.value) : undefined; };
+        return Rekenkern.profielVoorstel({ slagMm: waarde('slagMm'), snelheidMmS: waarde('snelheidMmPerSec'),
+          krachtExternN: waarde('krachtN'), pauzeS: 0 });
+      },
+      opWijziging: function (aan, rijen) { configuratorProfiel = { aan: aan, rijen: rijen }; bijwerken(); }
+    }));
   }
 
   // ── Uitlezen ────────────────────────────────────────────────────────
@@ -9241,6 +9530,8 @@ var Afbeeldingen = (function () {
         belasting[veld.naam] = el.value;
       }
     });
+    // v1.52: het bewegingsprofiel gaat mee zolang het aan staat.
+    if (configuratorProfiel.aan) belasting.profiel = configuratorProfiel.rijen;
     return belasting;
   }
 
@@ -9294,6 +9585,12 @@ var Afbeeldingen = (function () {
       }
       container.appendChild(regelMetIcoon(
         'Levensduur: ' + Rekenkern.levensduurTekst(r.levensduurUren) + ' (vereist: ' + vereist + ')', r.levensduurOk));
+      // v1.52: zeg waarmee de levensduur gerekend is.
+      container.appendChild(toelichting(r.profiel
+        ? 'Levensduur met het bewegingsprofiel: gemiddelde last ' + fmtDuizend(r.profiel.krachtGemN) +
+          ' N bij gemiddeld ' + fmtDuizend(r.profiel.snelheidGemMmS) + ' mm/s.'
+        : 'Levensduur alsof de spindel onafgebroken beweegt met de opgegeven kracht en snelheid. ' +
+          'Met een bewegingsprofiel rekent de tool met de gemiddelde last.'));
     }
     if (typeof r.statischGrensKN === 'number') {
       container.appendChild(regelMetIcoon(
@@ -9419,6 +9716,11 @@ var Afbeeldingen = (function () {
       r.vlaktedrukOk));
     inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (max. ' + Rekenkern.edPer10Min(r.edMax) +
       '; PV-waarde ' + fmt(r.pvWaarde, 0) + ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
+    // v1.52: met een bewegingsprofiel een echte toets.
+    if (typeof r.edWerkelijk === 'number') {
+      inhoud.appendChild(regelMetIcoon('Inschakelduur volgens het bewegingsprofiel: ' + fmt(r.edWerkelijk, 0) +
+        ' % (toelaatbaar ' + r.edMax + ' %)', r.edOk));
+    }
   }
 
 
@@ -9911,6 +10213,7 @@ var Afbeeldingen = (function () {
 
   document.getElementById('btnReset').addEventListener('click', function () {
     wizardVoorselectie = null;
+    configuratorProfiel = { aan: false, rijen: [] };
     huidigeHerkomst = {};
     huidigeBelastingHerkomst = {};
     opgeslagenBelastingPerTak = {};
@@ -11257,6 +11560,7 @@ var Afbeeldingen = (function () {
       WizardLogica.belastingBijConfiguratie(wizBelastingUitAntwoorden(wizAntwoorden), cfg && cfg.d ? cfg : null));
     // Geen slag opgegeven: dan ook geen label "overgenomen" bij een leeg veld.
     if (belasting.slagMm === undefined) delete huidigeBelastingHerkomst.slagMm;
+    configuratorProfiel = { aan: false, rijen: [] }; // het profiel volgt uit de wizard (belasting.profiel)
     opnieuwOpbouwen(tak, waarden, belasting);
     toonScherm('configurator');
   }
@@ -11379,6 +11683,12 @@ var Afbeeldingen = (function () {
       bewegingMelding.id = 'wizBewegingMelding';
       bewegingMelding.setAttribute('aria-live', 'polite');
       wizContainer.appendChild(bewegingMelding);
+      // v1.52: het bewegingsprofiel als geavanceerde optie onder de beweging.
+      wizContainer.appendChild(bouwProfielEditor({
+        id: 'wizProfiel', aan: wizAntwoorden.profielAan, rijen: wizAntwoorden.profiel,
+        vulIn: function () { return WizardLogica.profielVoorstelUitAntwoorden(wizAntwoordenVoorAdvies()); },
+        opWijziging: function (aan, rijen) { wizAntwoorden.profielAan = aan; wizAntwoorden.profiel = rijen; }
+      }));
     }
 
     if (stap.nummer === stappen.length) {
