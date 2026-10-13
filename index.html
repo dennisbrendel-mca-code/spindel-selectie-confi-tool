@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.49  13-10-2026  Inschakelduur trapezium met kunststof moer hoogstens 10 % per 10 minuten; advies brons met smering of kogelomloop bij intensief gebruik
   1.48  13-10-2026  Inschakelduur trapezium: hoogstens 20 % per 10 minuten (was tot 100 %), weergave per 10 minuten, melding bij regelmatig en continu bedrijf
   1.47  13-10-2026  Type geleiding: kogelomloopgeleiding omvat ook lineaire kogellagers (kogelbussen) op een geharde as
   1.46  13-10-2026  Review groep B: L voor linkse draad in de bestelcode; lagerunits bij trapeziumdiameters zoals kogelomloop; meldingen bij zwak vastlager, droog bedrijf en hoge tolerantie; rode samenvatting als een toets faalt; handbediend; stap 4 gesplitst; labels aangenomen/berekend; legenda; max. slag; vaste knoppen in het offertevenster
@@ -441,7 +442,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.48 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.49 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3285,12 +3286,17 @@ var Rekenkern = (function () {
   // v1.48 (opdrachtgever 13-10-2026): de inschakelduur geldt per 10 minuten
   // en is bij trapezium nooit 100 %, dus bij regelmatig of continu bedrijf
   // altijd de melding.
-  function inschakelduurTekst(edMax, bedrijf) {
+  function inschakelduurTekst(edMax, bedrijf, moermateriaal) {
     if (bedrijf !== 'regelmatig' && bedrijf !== 'continu') return null;
     if (typeof edMax !== 'number' || edMax >= 100) return null;
     return 'De toelaatbare inschakelduur van de trapeziumspindel is bij deze belasting en snelheid circa ' +
       edMax + ' %: maximaal ' + edPer10Min(edMax) + ', daarna moet de spindel afkoelen. ' +
-      'Draait hij langer, dan adviseren wij een kogelomloopspindel.';
+      (moermateriaal === 'kunststof'
+        // v1.49 (opdrachtgever 13-10-2026): kunststof voor lichte tot matige
+        // belasting en korte bewegingen met lange pauzes.
+        ? 'Een kunststof moer houdt de warmte vast en is bedoeld voor korte bewegingen met lange pauzes. ' +
+          'Draait de spindel langer, dan adviseren wij een bronzen moer met smering of een kogelomloopspindel.'
+        : 'Draait hij langer, dan adviseren wij een kogelomloopspindel.');
   }
 
   // De inschakelduur als bewegingstijd per periode van 10 minuten.
@@ -3363,17 +3369,24 @@ var Rekenkern = (function () {
   // trapeziumspindel beperkt tot circa 20 à 30 % per 10 minuten. MCAlc gaf
   // onder PV 21 nog 100 %; de tool houdt daar 20 % aan, de veilige kant.
   var ED_MAX_TRAPEZIUM = 20;
+  // v1.49 (opdrachtgever 13-10-2026): een kunststof moer voert de warmte
+  // slecht af en vervormt al boven circa 80 à 100 °C; in de praktijk 10 à 20 %.
+  // De tool houdt 10 % aan, ook droog (daar is een kunststof moer voor gemaakt).
+  var ED_MAX_KUNSTSTOF = 10;
   var ED_TABEL = [
     { vanaf: 250, ed: 1, smering: 'continu smering vereist' },
     { vanaf: 21, ed: 10, smering: 'let op de smeerintervallen' },
     { vanaf: 0, ed: ED_MAX_TRAPEZIUM, smering: 'periodiek smeren' }
   ];
-  function inschakelduurUitPV(pv) {
+  function inschakelduurUitPV(pv, moermateriaal) {
     if (typeof pv !== 'number' || !Number.isFinite(pv) || pv < 0) {
       throw new Error('pv moet 0 of groter zijn, kreeg ' + pv);
     }
     for (var i = 0; i < ED_TABEL.length; i++) {
-      if (pv >= ED_TABEL[i].vanaf) return { edMax: ED_TABEL[i].ed, smering: ED_TABEL[i].smering };
+      if (pv >= ED_TABEL[i].vanaf) {
+        var ed = moermateriaal === 'kunststof' ? Math.min(ED_TABEL[i].ed, ED_MAX_KUNSTSTOF) : ED_TABEL[i].ed;
+        return { edMax: ed, smering: ED_TABEL[i].smering };
+      }
     }
   }
 
@@ -3400,7 +3413,7 @@ var Rekenkern = (function () {
     var grens = toelaatbareVlaktedruk(vg, moermateriaal);
     var fi = belastingsaartFactor(belastingsaart);
     var pv = pvWaarde(p, vg, fi);
-    var ed = inschakelduurUitPV(pv);
+    var ed = inschakelduurUitPV(pv, moermateriaal);
     return {
       glijsnelheid: vg,
       vgTabel: grens.vgTabel,
@@ -3671,6 +3684,7 @@ var Rekenkern = (function () {
     axialeKrachtUitGewicht: axialeKrachtUitGewicht,
     edPer10Min: edPer10Min,
     ED_MAX_TRAPEZIUM: ED_MAX_TRAPEZIUM,
+    ED_MAX_KUNSTSTOF: ED_MAX_KUNSTSTOF,
     inschakelduurTekst: inschakelduurTekst,
     P_MAX_METAAL: P_MAX_METAAL,
     P_MAX_KUNSTSTOF: P_MAX_KUNSTSTOF,
@@ -4385,8 +4399,9 @@ var Advies = (function () {
     // Spec 2026-10-09-trapezium-mcalc §2.3 (v1.35, vervangt de vaste melding
     // van v1.34): de toelaatbare inschakelduur uit de PV-waarde. Melding bij
     // regelmatig of continu bedrijf, zodra die onder 100 % ligt.
-    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf)) {
-      waarschuwingen.push({ ernst: 'info', tekst: Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf) });
+    if (invoer.type === 'trapezium' && Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf, invoer.moermateriaal)) {
+      waarschuwingen.push({ ernst: 'info',
+        tekst: Rekenkern.inschakelduurTekst(berekend.edMax, invoer.bedrijf, invoer.moermateriaal) });
     }
 
     var uit = { maat: gekozen, berekend: berekend, waarschuwingen: waarschuwingen };
@@ -5994,7 +6009,8 @@ var WizardLogica = (function () {
         opties: [
           optie('brons', 'Brons (CuSn7ZnPb)', 'Standaard; hoogste toelaatbare vlaktedruk en glijsnelheid'),
           optie('kunststof', 'Kunststof',
-            'Lagere grens voor vlaktedruk (1 N/mm²) en glijsnelheid (0,6 m/s); de tool rekent daarmee')
+            'Stil en zonder smering; voor lichte tot matige belasting en korte bewegingen met pauzes ' +
+            '(inschakelduur hoogstens 10 %). Lagere grens voor vlaktedruk (1 N/mm²) en glijsnelheid (0,6 m/s)')
         ]
       }));
     }
