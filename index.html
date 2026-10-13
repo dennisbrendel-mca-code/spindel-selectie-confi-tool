@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.50  13-10-2026  Controle rekenuitkomsten: lagerunits volgen de lagering (vast-vast), lagerzitting binnen de kerndiameter bij trapezium, eigen draaggetal BRM/BSM, kritisch toerental lead screw volgens de catalogus, juiste teksten bij "weet ik niet" en C dyn
   1.49  13-10-2026  Inschakelduur trapezium met kunststof moer hoogstens 10 % per 10 minuten; advies brons met smering of kogelomloop bij intensief gebruik
   1.48  13-10-2026  Inschakelduur trapezium: hoogstens 20 % per 10 minuten (was tot 100 %), weergave per 10 minuten, melding bij regelmatig en continu bedrijf
   1.47  13-10-2026  Type geleiding: kogelomloopgeleiding omvat ook lineaire kogellagers (kogelbussen) op een geharde as
@@ -442,7 +443,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.49 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.50 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -800,6 +801,7 @@ var Catalogus = (function () {
   // LET OP: Tr 10x3 en Tr 70x10 zijn alleen in C45 gewerveld leverbaar, niet in C35.
   //
   // Zevende kolom: MCA Kugelberger V3.4, p.15 — BFM-maattabel, kolom C dyn [kN].
+  // (v1.50: in feite de belasting bij 10 N/mm² vlaktedruk, geen L10-getal.)
   // Dit is een dynamisch draaggetal voor levensduurberekening (vergelijkbaar
   // met C dyn bij een kogellager), GEEN statische breukgrens. Dat een kracht
   // onder deze grens blijft, betekent dus niet dat de maat op levensduur is
@@ -863,9 +865,8 @@ var Catalogus = (function () {
       P: r[1],
       gangen: 1,
       uitvoeringen: uitvoeringen,
-      // BFM-waarde uit p.15, kolom C dyn [kN]. Voorlopig ook gebruikt voor BRM
-      // en BSM: die moeren hebben eigen draaggetallen die nog niet zijn
-      // overgenomen (openstaand punt 17). null voor Tr 48x8 — komt niet voor
+      // BFM-waarde uit p.15, kolom C dyn [kN]. BRM en BSM: zie
+      // trapeziumDraaggetal (v1.50, eigen waarden op drie maten). null voor Tr 48x8 — komt niet voor
       // in de BFM-tabel (openstaand punt 18); niet doorrekenen, niet adviseren.
       cDynBFM: r[6] === undefined ? null : r[6],
       // Kerndiameter volgens DIN 103 (achtste kolom, zie hierboven).
@@ -912,7 +913,39 @@ var Catalogus = (function () {
   // indeling (Tr 18 → als Ø16), zodat de astap binnen de spindel blijft.
   // Boven de grootste diameter van een unittype blijft het null, net als bij
   // kogelomloop. Kogelomloopdiameters zelf veranderen niet.
-  function lagerunitMaat(code, d) {
+  //
+  // v1.50 (controle 13-10-2026): bij trapezium moet de lagerzitting kleiner
+  // zijn dan de kerndiameter d3, anders blijven er draadgronden op de zitting
+  // staan (Tr 16×4: zitting 12 bij d3 11,5; Tr 32×6: 25 bij d3 25). Met
+  // type 'trapezium' zakt de bouwgrootte dan naar de grootste die past.
+  function lagerunitMaat(code, d, type) {
+    var maat = lagerunitMaatKogelindeling(code, d);
+    if (type !== 'trapezium' || maat === null) return maat;
+    var tr = trapeziumMaten.filter(function (m) { return m.d === d; })[0];
+    if (!tr || typeof tr.d3 !== 'number') return maat;
+    var kandidaten = Object.keys(LAGERUNIT_INDELING[code]).map(function (k) { return LAGERUNIT_INDELING[code][k]; })
+      .filter(function (m, i, lijst) { return m <= maat && lijst.indexOf(m) === i; })
+      .sort(function (x, y) { return y - x; });
+    for (var i = 0; i < kandidaten.length; i++) {
+      var zitting = code === 'WBK' ? kandidaten[i]
+        : (ASTAP_MATEN[code] && ASTAP_MATEN[code][kandidaten[i]] ? ASTAP_MATEN[code][kandidaten[i]][1] : null);
+      if (zitting !== null && zitting < tr.d3) return kandidaten[i];
+    }
+    return null;
+  }
+  // v1.50 (controle 13-10-2026, openstaand punt 17): BRM en BSM hebben op
+  // drie maten een eigen C dyn (MCA-catalogus p.18–19); verder gelijk aan BFM.
+  var TRAPEZIUM_DRAAGGETAL_AFWIJKEND = {
+    BRM: { '26x5': 16.2, '50x8': 62.5 },
+    BSM: { '26x5': 16.8, '50x8': 62.5 }
+  };
+  function trapeziumDraaggetal(moertype, maat) {
+    var tabel = TRAPEZIUM_DRAAGGETAL_AFWIJKEND[moertype];
+    var eigen = tabel && tabel[maat.d + 'x' + maat.P];
+    return eigen !== undefined ? eigen : maat.cDynBFM;
+  }
+
+  function lagerunitMaatKogelindeling(code, d) {
     var indeling = LAGERUNIT_INDELING[code];
     if (!indeling) throw new Error('onbekende lagerunit: ' + code);
     if (indeling[d] !== undefined) return indeling[d];
@@ -1474,6 +1507,7 @@ var Catalogus = (function () {
     },
     lagerunits: lagerunits,
     lagerunitMaat: lagerunitMaat,
+    trapeziumDraaggetal: trapeziumDraaggetal,
     lagerunitAxiaalKN: lagerunitAxiaalKN,
     astapMaten: astapMaten,
     lagerblokMaten: lagerblokMaten,
@@ -2062,17 +2096,17 @@ var ConfiguratorLogica = (function () {
   // sowieso niet, net zomin als het ooit "ontbreekt" op diameters waar het
   // nooit van toepassing was — vandaar de losse lijst per diameter in plaats
   // van WBK zomaar aan LAGERUNIT_CODES toe te voegen.
-  function lagerunitCodesVoor(d) {
-    return Catalogus.lagerunitMaat('WBK', d) !== null ? LAGERUNIT_CODES.concat('WBK') : LAGERUNIT_CODES;
+  function lagerunitCodesVoor(d, type) {
+    return Catalogus.lagerunitMaat('WBK', d, type) !== null ? LAGERUNIT_CODES.concat('WBK') : LAGERUNIT_CODES;
   }
 
-  function lagerunitBestaat(code, d) {
-    return Catalogus.lagerunitMaat(code, d) !== null;
+  function lagerunitBestaat(code, d, type) {
+    return Catalogus.lagerunitMaat(code, d, type) !== null;
   }
 
   // Waar zodra er bij deze diameter minstens één lagerunit bestaat.
-  function lagerunitBeschikbaar(d) {
-    return lagerunitCodesVoor(d).some(function (code) { return lagerunitBestaat(code, d); });
+  function lagerunitBeschikbaar(d, type) {
+    return lagerunitCodesVoor(d, type).some(function (code) { return lagerunitBestaat(code, d, type); });
   }
 
   function opsomming(codes) {
@@ -2082,13 +2116,13 @@ var ConfiguratorLogica = (function () {
 
   // Zonder codes: noemt de units die bij d ontbreken. Met codes (de wizard):
   // noemt precies die. Bestaat er bij d geen enkele unit, dan de volledige uitleg.
-  function lagerunitOntbreektMelding(d, codes) {
-    if (!lagerunitBeschikbaar(d)) {
+  function lagerunitOntbreektMelding(d, codes, type) {
+    if (!lagerunitBeschikbaar(d, type)) {
       return 'Voor Ø' + d + ' mm staat in de MCA-catalogus (p.24–27) geen lagerunit; FKN, BKN, FFN en ' +
         'BFN zijn hier dus niet te kiezen. "0" (zonder bewerking) en "Z" (volgens tekening) ' +
         'kunnen wel. Op aanvraag laat MCA weten of er voor deze diameter een lagerunit mogelijk is.';
     }
-    var ontbrekend = codes || lagerunitCodesVoor(d).filter(function (c) { return !lagerunitBestaat(c, d); });
+    var ontbrekend = codes || lagerunitCodesVoor(d, type).filter(function (c) { return !lagerunitBestaat(c, d, type); });
     if (!ontbrekend.length) return null;
     return 'Voor Ø' + d + ' mm ' + (ontbrekend.length === 1 ? 'bestaat ' : 'bestaan ') +
       opsomming(ontbrekend) + ' niet in de MCA-catalogus (p.24–27).';
@@ -2098,8 +2132,8 @@ var ConfiguratorLogica = (function () {
   // ontwerp §4): DF 2 lagers, DFD 3, DFF 4.
   var WBK_UITVOERING_LABEL = { DF: '2 lagers', DFD: '3 lagers', DFF: '4 lagers' };
 
-  function wbkOptiesVoor(d) {
-    var maat = Catalogus.lagerunitMaat('WBK', d);
+  function wbkOptiesVoor(d, type) {
+    var maat = Catalogus.lagerunitMaat('WBK', d, type);
     if (maat === null) return [];
     return Catalogus.wbkUitvoeringen(maat).map(function (u) {
       return { waarde: 'WBK' + u, label: 'WBK ' + u + ' – vast, flens, ' + WBK_UITVOERING_LABEL[u] };
@@ -2115,14 +2149,14 @@ var ConfiguratorLogica = (function () {
       opties.push({ waarde: 'Z', label: 'Z – volgens tekening' });
       return { opties: opties, lagerunitBeschikbaar: true, toelichting: null };
     }
-    var bestaand = Catalogus.lagerunits.filter(function (u) { return lagerunitBestaat(u.code, d); });
-    var wbk = wbkOptiesVoor(d);
+    var bestaand = Catalogus.lagerunits.filter(function (u) { return lagerunitBestaat(u.code, d, type); });
+    var wbk = wbkOptiesVoor(d, type);
     return {
       opties: ASTAP_ZONDER_LAGERUNIT.concat(bestaand.map(function (u) {
         return { waarde: u.code, label: u.code + ' – ' + u.functie + ', ' + u.vorm };
       })).concat(wbk),
       lagerunitBeschikbaar: bestaand.length > 0 || wbk.length > 0,
-      toelichting: lagerunitOntbreektMelding(d)
+      toelichting: lagerunitOntbreektMelding(d, null, type)
     };
   }
 
@@ -2183,12 +2217,12 @@ var ConfiguratorLogica = (function () {
         // code behandelen. Catalogus.parseLagerunit haalt ze uit elkaar.
         var parsed = Catalogus.parseLagerunit(waarde);
         if (parsed && parsed.code === 'WBK') {
-          var wMaat = Catalogus.lagerunitMaat('WBK', uit.d);
+          var wMaat = Catalogus.lagerunitMaat('WBK', uit.d, uit.type);
           uit[sleutel] = wMaat === null ? waarde : 'WBK' + String(wMaat).padStart(2, '0') + parsed.uitvoering;
           return;
         }
         var code = waarde.replace(/[0-9]/g, '');
-        var maat = Catalogus.lagerunitMaat(code, uit.d);
+        var maat = Catalogus.lagerunitMaat(code, uit.d, uit.type);
         // Bouwgrootte altijd met twee cijfers: MCA schrijft FKN06, niet FKN6
         // (bevestigd door de opdrachtgever, 26 september 2026).
         uit[sleutel] = maat === null ? code : code + String(maat).padStart(2, '0');
@@ -2481,7 +2515,7 @@ var ConfiguratorLogica = (function () {
     [cfg.astap1, cfg.astap2].forEach(function (waarde) {
       var p = Catalogus.parseLagerunit(waarde);
       if (!p || (p.code !== 'FKN' && p.code !== 'BKN' && p.code !== 'WBK')) return;
-      var maat = p.maat !== null ? p.maat : Catalogus.lagerunitMaat(p.code, cfg.d);
+      var maat = p.maat !== null ? p.maat : Catalogus.lagerunitMaat(p.code, cfg.d, cfg.type);
       if (maat === null) return;
       var grens = Catalogus.lagerunitAxiaalKN(p.code, maat, p.uitvoering);
       if (grens === null) return;
@@ -2722,8 +2756,8 @@ var ConfiguratorLogica = (function () {
         // aanroeper niet per tak hoeft te weten hoe de krachttoets heet.
         // draaggetalKN is de C dyn-waarde uit de BFM-tabel (catalogus-blok).
         krachtN: belasting.krachtN,
-        draaggetalKN: maat.cDynBFM,
-        krachtOk: Rekenkern.draaggetalOk(belasting.krachtN, maat.cDynBFM),
+        draaggetalKN: Catalogus.trapeziumDraaggetal(cfg.moertype, maat),
+        krachtOk: Rekenkern.draaggetalOk(belasting.krachtN, Catalogus.trapeziumDraaggetal(cfg.moertype, maat)),
         // Spec 2026-10-09-dn-lager-geleiding §2.2/§2.3 (v1.34).
         vastlager: vastlagerToets(cfg, belasting.krachtN),
         eta: etaT,
@@ -3603,6 +3637,7 @@ var Rekenkern = (function () {
   // Advies.kies() en ConfiguratorLogica.controleer() zodat wizard en scherm
   // nooit met twee verschillende toetsen werken. De catalogusgegevens komen van
   // de aanroeper; dit blok kent Catalogus niet.
+  var DRAADSPINDEL_FCR = { 'vast-vrij': 0.39, 'los-los': 1.095, 'vast-los': 1.71, 'vast-vast': 2.482 };
   function draadspindelToets(p) {
     if (!p || typeof p !== 'object') throw new Error('invoer ontbreekt of is geen object, kreeg ' + p);
     positief(p.krachtN, 'krachtN');
@@ -3610,7 +3645,15 @@ var Rekenkern = (function () {
     positief(p.P, 'P');
     positief(p.cDynN, 'cDynN');
     var n = benodigdToerental(p.snelheidMmPerSec, p.P);
-    var toer = kritischToerental(p.d3, p.lengteMm, p.lagering);
+    // v1.50 (controle 13-10-2026): eigen lageringsfactoren die de catalogus
+    // van de lead screws volgen (balktheorie, lengteschaal 100:168:210:253).
+    // Met de kogelomloopfactoren lag n_cr bij los-los/vast-los/vast-vast
+    // 6–8 % te hoog.
+    factor(p.lagering); // valideert de lagering, met dezelfde foutmelding als elders
+    if (p.d3 <= 0) throw new Error('d3 moet positief zijn, kreeg ' + p.d3);
+    if (p.lengteMm <= 0) throw new Error('lcr moet positief zijn, kreeg ' + p.lengteMm);
+    var nCrLs = DRAADSPINDEL_FCR[p.lagering] * (p.d3 / (p.lengteMm * p.lengteMm)) * 1e8;
+    var toer = { nCr: nCrLs, nCrMax: 0.8 * nCrLs };
     var slank = slankheid(p.lengteMm, p.dKern, p.lagering);
     var cf = pvFactor(p.pvPunten, n);
     var draag = cf * p.cDynN;
@@ -4380,10 +4423,11 @@ var Advies = (function () {
     if (invoer.type === 'trapezium') {
       waarschuwingen.push({
         ernst: 'info',
+        // v1.50 (controle 13-10-2026): C dyn bij trapezium is de belasting
+        // bij 10 N/mm² vlaktedruk (richtwaarde), geen levensduurdraaggetal.
         tekst: 'De draagkrachttoets (C dyn ' + berekend.cDynBFM.toFixed(1).replace('.', ',') +
-               ' kN) rekent met de waarde van de BFM-flensmoer; de eigen draaggetallen van BRM- en ' +
-               'BSM-moeren zitten nog niet in de tool. C dyn is een dynamisch draaggetal voor de ' +
-               'levensduurberekening, geen statische breukgrens en geen doorgerekende levensduur.'
+               ' kN, BFM-flensmoer) is de belasting waarbij de vlaktedruk in de moer 10 N/mm² is ' +
+               '(richtwaarde). Het is geen levensduurberekening en geen statische breukgrens.'
       });
     }
 
@@ -6302,7 +6346,8 @@ var WizardLogica = (function () {
             optie('vast-los', 'Vast – los', 'Standaardopstelling: het vaste lager neemt de axiale kracht op, het losse lager ondersteunt alleen'),
             optie('vast-vrij', 'Vast – vrij', 'Eén kant vrij: alleen voor korte spindels en lage toerentallen'),
             optie('los-los', 'Los – los', 'Aan beide kanten alleen ondersteund: voor een lichte belasting en een korte afstand'),
-            optie('weetniet', 'Weet ik niet', 'Adviseer op basis van mijn antwoorden')
+            // v1.50 (controle 13-10-2026): de tool rekent dan met vast-los.
+            optie('weetniet', 'Weet ik niet', 'De tool rekent met vast-los, de gangbare opstelling')
           ]
         }),
         // Numeriek veld, dus geen "weet ik niet"-keuzeoptie zoals bij een
@@ -6818,7 +6863,7 @@ var WizardLogica = (function () {
   // volgt, is berekend. De ui maakt daar het label "aangenomen" of
   // "berekend" van (herkomstLabel).
   var AANNAME_BRON = {
-    lagering: ['lagering', 'de tool kiest de lagerconfiguratie op basis van uw andere antwoorden'],
+    lagering: ['lagering', 'de tool rekent met vast-los, de gangbare opstelling'],
     belastingsaart: ['belastingsaart', 'de tool rekent met de zwaarste belastingsaart'],
     orientatie: ['orientatie', 'de tool rekent voorzichtigheidshalve met verticaal'],
     bedrijf: ['bedrijf', null],
@@ -6988,6 +7033,11 @@ var WizardLogica = (function () {
       var aandrijfLos = ds && a.aandrijfzijde === 'los';
       var vastCode = ds ? (aandrijfLos ? 'ALN' : 'BLN') : 'BKN';
       var losCode = ds ? (aandrijfLos ? 'BFN' : 'AFN') : 'BFN';
+      // v1.50 (controle 13-10-2026): de lagerunits volgen de lagering waarmee
+      // het advies rekent. Vast-vast kreeg BKN + BFN (vast-los), waardoor knik
+      // en toerental te gunstig uitkwamen voor wat geleverd wordt.
+      if (!ds && cfg.lagerconfiguratie === 'vast-vast') losCode = 'BKN';
+      if (!ds && cfg.lagerconfiguratie === 'los-los') vastCode = 'BFN';
       var linksBewerkt = expliciet || blokLinks || !aandrijfLos;
       var rechtsBewerkt = expliciet || blokRechts || aandrijfLos;
       cfg.astap1 = linksBewerkt ? vastCode : (ds ? 'NNN' : '0');
@@ -7012,23 +7062,23 @@ var WizardLogica = (function () {
         // dan komt de vaste zijde op WBK DF in plaats van "0". De losse
         // zijde (BFN) kent nog geen WBK-unit (open punt W2) en valt gewoon
         // terug zoals voorheen.
-        if (code === 'BKN' && !ConfiguratorLogica.lagerunitBestaat('BKN', cfg.d) &&
-            ConfiguratorLogica.lagerunitBestaat('WBK', cfg.d)) {
+        if (code === 'BKN' && !ConfiguratorLogica.lagerunitBestaat('BKN', cfg.d, cfg.type) &&
+            ConfiguratorLogica.lagerunitBestaat('WBK', cfg.d, cfg.type)) {
           cfg[zijde] = 'WBKDF';
           return;
         }
-        if ((code === 'BKN' || code === 'BFN') && !ConfiguratorLogica.lagerunitBestaat(code, cfg.d)) {
+        if ((code === 'BKN' || code === 'BFN') && !ConfiguratorLogica.lagerunitBestaat(code, cfg.d, cfg.type)) {
           ontbrekend.push(code);
           cfg[zijde] = '0';
         }
       });
       if (ontbrekend.length) {
-        cfg.lagerunitMelding = ConfiguratorLogica.lagerunitOntbreektMelding(cfg.d, ontbrekend);
+        cfg.lagerunitMelding = ConfiguratorLogica.lagerunitOntbreektMelding(cfg.d, ontbrekend, cfg.type);
         // F2: alleen bij de korte (gedeeltelijke) melding zeggen wat de tool
         // deed. Bestaat er bij d helemaal geen lagerunit, dan geeft
         // lagerunitOntbreektMelding de volledige uitleg terug (negeert
         // `ontbrekend` dan) en blijft die tekst zoals hij is.
-        if (ConfiguratorLogica.lagerunitBeschikbaar(cfg.d)) {
+        if (ConfiguratorLogica.lagerunitBeschikbaar(cfg.d, cfg.type)) {
           cfg.lagerunitMelding += ontbrekend.length === 1
             ? ' Die zijde blijft daarom onbewerkt ("0").'
             : ' Die zijden blijven daarom onbewerkt ("0").';
