@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.47  13-10-2026  Type geleiding: kogelomloopgeleiding omvat ook lineaire kogellagers (kogelbussen) op een geharde as
   1.46  13-10-2026  Review groep B: L voor linkse draad in de bestelcode; lagerunits bij trapeziumdiameters zoals kogelomloop; meldingen bij zwak vastlager, droog bedrijf en hoge tolerantie; rode samenvatting als een toets faalt; handbediend; stap 4 gesplitst; labels aangenomen/berekend; legenda; max. slag; vaste knoppen in het offertevenster
   1.45  12-10-2026  Review groep A: advies rekent met slag + moerlengte; typewissel, uitgangspunt zonder passende maat, leesbare foutmeldingen, lengtecontrole, telefoonkopbalk, toetsenbord in de wizard, contrast
   1.44  12-10-2026  FB-007: slag in de configurator; de totaallengte volgt de slag, met een melding als de slag niet past
@@ -439,7 +440,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.46 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.47 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -6035,7 +6036,13 @@ var WizardLogica = (function () {
         verplicht: false,
         hint: 'De wrijving van de geleiding telt mee in de kracht bij horizontale inbouw.',
         opties: [
-          optie('kogelomloop', 'Kogelomloopgeleiding (profielrail)', 'µ 0,03–0,05; gerekend met 0,05'),
+          // v1.47 (opdrachtgever 13-10-2026): ook lineaire kogellagers
+          // (kogelbussen) op een geharde as, µ 0,001–0,003; afdichtingen
+          // verhogen de weerstand. De tool houdt de bovenkant van de hele
+          // band aan (µ 0,05), de veilige kant.
+          optie('kogelomloop', 'Kogelomloopgeleiding of kogelbussen',
+            'Profielrail (µ 0,03–0,05) of lineaire kogellagers op een geharde as (µ 0,001–0,003); ' +
+            'gerekend met 0,05, ook omdat afdichtingen extra weerstand geven'),
           optie('rollen', 'Rollengeleiding', 'µ 0,03–0,1; gerekend met 0,1'),
           optie('combirollen', 'Combirollen', 'µ 0,1'),
           optie('glijlager', 'Glijlagergeleiding', 'µ 0,3'),
@@ -7194,7 +7201,7 @@ var Offerte = (function () {
     smering: { gesmeerd: 'gesmeerd', droog: 'droog (zonder smering)' },
     // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): met de µ waarmee de
     // tool rekent ('kogelomloop' is hier de geleiding, niet het spindeltype).
-    geleiding: { kogelomloop: 'kogelomloopgeleiding (µ 0,05)', rollen: 'rollengeleiding (µ 0,1)',
+    geleiding: { kogelomloop: 'kogelomloopgeleiding of kogelbussen (µ 0,05)', rollen: 'rollengeleiding (µ 0,1)',
       combirollen: 'combirollen (µ 0,1)', glijlager: 'glijlagergeleiding (µ 0,3)',
       weetniet: 'weet ik niet (µ 0,3)' },
     tolerantie: { gemiddeld: 'gemiddeld (0,05 – 0,2 mm)' }
