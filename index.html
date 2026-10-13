@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.51  13-10-2026  Besluiten controle: kracht horizontaal µ·m·g + F_extern + m·a (standaard 2 m/s²), opgegeven kracht telt bij het gewicht op; 50 mm uitloop tussen de lagers; trapeziumkoppel met 1,07·µ zoals MCAlc; WBK als het standaard vastlager te zwak is
   1.50  13-10-2026  Controle rekenuitkomsten: lagerunits volgen de lagering (vast-vast), lagerzitting binnen de kerndiameter bij trapezium, eigen draaggetal BRM/BSM, kritisch toerental lead screw volgens de catalogus, juiste teksten bij "weet ik niet" en C dyn
   1.49  13-10-2026  Inschakelduur trapezium met kunststof moer hoogstens 10 % per 10 minuten; advies brons met smering of kogelomloop bij intensief gebruik
   1.48  13-10-2026  Inschakelduur trapezium: hoogstens 20 % per 10 minuten (was tot 100 %), weergave per 10 minuten, melding bij regelmatig en continu bedrijf
@@ -443,7 +444,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.50 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.51 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2709,7 +2710,7 @@ var ConfiguratorLogica = (function () {
       var wrijvingMateriaal = (cfg.materiaalMoer === 'D' || cfg.materiaalMoer === 'E') ? 'staal'
         : belasting.moermateriaal;
       var etaT = Rekenkern.rendement(geometrie.phi,
-        Rekenkern.wrijvingshoek(Rekenkern.moerWrijving(wrijvingMateriaal, belasting.smering)));
+        Rekenkern.wrijvingshoekKoppel(Rekenkern.moerWrijving(wrijvingMateriaal, belasting.smering)));
       var koppelT = Rekenkern.aandrijfkoppel(belasting.krachtN, cfg.P, etaT);
       var losbreek = Rekenkern.losbreekkoppelTrapezium(belasting.krachtN, cfg.P, cfg.d, cfg.P, gangen);
       var vermogenT = Rekenkern.aandrijfvermogen(koppelT, n);
@@ -2842,7 +2843,8 @@ var ConfiguratorLogica = (function () {
   // FB-007 (v1.44): de totaallengte bij een slag, zoals de wizard hem
   // opbouwt: slag + moerlengte + beide astappen, naar boven afgerond.
   function lengteUitSlag(cfg, slagMm) {
-    return Math.ceil(slagMm + moerLengte(cfg) + astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
+    return Math.ceil(slagMm + moerLengte(cfg) + Rekenkern.UITLOOP_MM +
+      astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
   }
 
   // FB-007 (v1.44): past de slag met de moer tussen de lagers? Zo niet, dan
@@ -2850,12 +2852,12 @@ var ConfiguratorLogica = (function () {
   function slagMelding(cfg, slagMm, overspanningMm) {
     if (!(slagMm > 0) || !(overspanningMm > 0)) return null;
     var moer = moerLengte(cfg);
-    var max = overspanningMm - moer;
+    var max = overspanningMm - moer - Rekenkern.UITLOOP_MM;
     if (slagMm <= max) return null;
     return max > 0
       ? 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte is de slag maximaal ' +
         Math.floor(max) + ' mm (overspanning ' + Math.round(overspanningMm) + ' mm min de moer van ' +
-        Math.round(moer) + ' mm).'
+        Math.round(moer) + ' mm en ' + Rekenkern.UITLOOP_MM + ' mm uitloop).'
       : 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte past de moer niet tussen de lagers.';
   }
 
@@ -3007,6 +3009,16 @@ var Rekenkern = (function () {
   function wrijvingshoek(mu) {
     if (mu <= 0) throw new Error('mu moet positief zijn, kreeg ' + mu);
     return Math.atan(mu * FLANKCORRECTIE) * GRAAD;
+  }
+
+  // v1.51 (opdrachtgever 13-10-2026: "Houd MCAlc aan"): voor het
+  // aandrijfkoppel van trapezium rekent MCAlc de wrijvingshoek met 1,07·µ in
+  // plaats van µ/cos 15° (≈ 1,035·µ); het koppel komt 1,6 à 2,1 % hoger uit.
+  // De zelfremklasse blijft bij wrijvingshoek() hierboven.
+  var MCALC_WRIJVINGSFACTOR = 1.07;
+  function wrijvingshoekKoppel(mu) {
+    if (mu <= 0) throw new Error('mu moet positief zijn, kreeg ' + mu);
+    return Math.atan(mu * MCALC_WRIJVINGSFACTOR) * GRAAD;
   }
 
   // KAMMERER p.133 [07]
@@ -3272,9 +3284,18 @@ var Rekenkern = (function () {
   // handleiding §4): horizontaal F = µ·m·g + m·a, anders F = m·g + m·a.
   // versnelling leeg (undefined/null) → a = g, net zo zwaar als de oude
   // vuistregel 2·m·g bij verticale inbouw.
+  // v1.51 (opdrachtgever 13-10-2026, MCA-catalogus p.40): horizontaal is de
+  // axiale last bij versnellen µ·m·g + F_extern + m·a. Zonder opgegeven
+  // versnelling rekent de tool horizontaal met 2 m/s² (was g: de kracht kwam
+  // 4 à 10 keer te hoog uit); verticaal blijft a = g de veilige kant.
+  var VERSNELLING_STANDAARD_HORIZONTAAL = 2;
+  // v1.51 (opdrachtgever 13-10-2026): tussen de lagers rekent MCA naast de
+  // slag en de moerlengte standaard 50 mm uitloop.
+  var UITLOOP_MM = 50;
   function axialeKrachtUitGewicht(massaKg, nietHorizontaal, geleiding, versnelling) {
     positiefGetal(massaKg, 'massaKg');
-    var a = (versnelling === undefined || versnelling === null) ? ZWAARTEKRACHT : versnelling;
+    var a = (versnelling === undefined || versnelling === null)
+      ? (nietHorizontaal ? ZWAARTEKRACHT : VERSNELLING_STANDAARD_HORIZONTAAL) : versnelling;
     if (typeof a !== 'number' || !Number.isFinite(a) || a < 0) {
       throw new Error('versnelling moet 0 of groter zijn, kreeg ' + versnelling);
     }
@@ -3689,6 +3710,7 @@ var Rekenkern = (function () {
     MU: MU,
     KLASSE_UITLEG: KLASSE_UITLEG,
     trapeziumGeometrie: trapeziumGeometrie,
+    wrijvingshoekKoppel: wrijvingshoekKoppel,
     wrijvingshoek: wrijvingshoek,
     rendement: rendement,
     zelfremklasse: zelfremklasse,
@@ -3724,6 +3746,8 @@ var Rekenkern = (function () {
     SMEER_DN_VET: SMEER_DN_VET,
     smeeradvies: smeeradvies,
     GELEIDING_MU: GELEIDING_MU,
+    UITLOOP_MM: UITLOOP_MM,
+    VERSNELLING_STANDAARD_HORIZONTAAL: VERSNELLING_STANDAARD_HORIZONTAAL,
     axialeKrachtUitGewicht: axialeKrachtUitGewicht,
     edPer10Min: edPer10Min,
     ED_MAX_TRAPEZIUM: ED_MAX_TRAPEZIUM,
@@ -4120,7 +4144,7 @@ var Advies = (function () {
   function vrijeLengteVoor(invoer, moerMm) {
     var slag = invoer.slagMm;
     if (typeof slag !== 'number' || !Number.isFinite(slag) || slag <= 0) return invoer.overspanningMm;
-    return Math.max(invoer.overspanningMm, slag + moerMm);
+    return Math.max(invoer.overspanningMm, slag + moerMm + Rekenkern.UITLOOP_MM);
   }
 
   function kandidaten(type) {
@@ -6133,13 +6157,15 @@ var WizardLogica = (function () {
       }),
       vraag({
         sleutel: 'kracht',
-        tekst: 'Gewenste axiale kracht of belasting (N, optioneel)',
+        tekst: 'Externe axiale kracht (N, optioneel)',
         type: 'getal',
         eenheid: 'N',
         // v1.40: korte uitleg wat de axiale kracht is (verzoek opdrachtgever 12-10-2026).
-        hint: 'De kracht in de lengterichting van de spindel die de moer moet leveren, bijvoorbeeld ' +
-          'de perskracht of het gewicht dat omhoog moet. Krachten dwars op de spindel vangt de geleiding op. ' +
-          'Onbekend? Laat leeg: de tool rekent dan met het gewicht, de geleiding en de versnelling.'
+        // v1.51: de opgegeven kracht komt bovenop het gewicht (MCA-catalogus p.40).
+        hint: 'Een kracht in de lengterichting van de spindel bovenop het gewicht, bijvoorbeeld een ' +
+          'perskracht of een procesbelasting. Het gewicht vult u hierboven in: de tool telt gewicht, ' +
+          'geleiding en versnelling er zelf bij. Krachten dwars op de spindel vangt de geleiding op. ' +
+          'Geen externe kracht? Laat het veld leeg.'
       })
     ];
     // Spec 2026-10-09-trapezium-mcalc §2.2/§2.4 (v1.35): smering bij
@@ -6665,7 +6691,7 @@ var WizardLogica = (function () {
 
   function totaalLengte(a, cfg) {
     var o = ontbreekt(a.overspanning) ? 0 : a.overspanning;
-    var s = ontbreekt(a.slag) ? 0 : a.slag + moerLengte(cfg);
+    var s = ontbreekt(a.slag) ? 0 : a.slag + moerLengte(cfg) + Rekenkern.UITLOOP_MM;
     var tussen = Math.max(o, s) || STANDAARD_TUSSEN_LAGERS;
     return Math.ceil(tussen + astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
   }
@@ -6726,12 +6752,15 @@ var WizardLogica = (function () {
     var uitGewicht = ontbreekt(a.gewicht) ? undefined
       : (a.gewicht > 0 ? Rekenkern.axialeKrachtUitGewicht(
           a.gewicht, a.orientatie !== 'horizontaal', a.geleiding, versnelling) : 0);
-    var krachtN = ontbreekt(a.kracht) ? uitGewicht : a.kracht;
-    if (a.kracht > 0 && typeof uitGewicht === 'number' && uitGewicht > 0 && a.kracht < uitGewicht) {
-      krachtN = uitGewicht;
-      meldingen.push('De opgegeven kracht (' + nlGetal(a.kracht, 0) + ' N) is lager dan de kracht uit gewicht, ' +
-        'geleiding en versnelling (' + nlGetal(uitGewicht, 0) + ' N). De tool rekent met ' +
-        nlGetal(uitGewicht, 0) + ' N.');
+    // v1.51 (opdrachtgever 13-10-2026, MCA-catalogus p.40): de opgegeven
+    // kracht is een externe kracht (bijv. een perskracht) en telt op bij de
+    // kracht uit gewicht, geleiding en versnelling (was: de grootste van de twee).
+    var krachtN = ontbreekt(a.kracht) ? uitGewicht
+      : (typeof uitGewicht === 'number' ? a.kracht + uitGewicht : a.kracht);
+    if (typeof uitGewicht === 'number' && uitGewicht > 0 && versnelling === undefined &&
+        a.orientatie === 'horizontaal') {
+      meldingen.push('U vulde geen versnelling in. De tool rekent bij horizontale inbouw met ' +
+        nlGetal(Rekenkern.VERSNELLING_STANDAARD_HORIZONTAAL, 0) + ' m/s²; vul de echte versnelling in als die hoger is.');
     }
     return { profiel: profiel, versnelling: versnelling, krachtN: krachtN, meldingen: meldingen };
   }
@@ -6840,13 +6869,13 @@ var WizardLogica = (function () {
   var HERKOMST_REDEN = {
     d: 'Maat geadviseerd op basis van de opgegeven belasting en snelheid.',
     P: 'Spoed hoort bij de geadviseerde maat.',
-    lengte: 'Berekend uit de opgegeven slag (plus moerlengte) of overspanning, plus de astappen.',
+    lengte: 'Berekend uit de opgegeven slag (plus moerlengte en 50 mm uitloop) of overspanning, plus de astappen.',
     astap1: R_LAGERBLOK, astap2: R_LAGERBLOK,
     voorspanning: R_NAUWKEURIG, klasse: R_NAUWKEURIG,
     materiaal: R_OMGEVING, materiaalMoer: R_OMGEVING, materiaalSpindel: R_OMGEVING,
-    krachtN: 'Overgenomen uit uw antwoord, of berekend uit gewicht, geleiding en versnelling.',
+    krachtN: 'Uw externe kracht plus de kracht uit gewicht, geleiding en versnelling.',
     snelheidMmPerSec: overgenomen('de gevraagde snelheid'),
-    overspanningMm: 'Uw opgegeven overspanning, of de slag plus de moerlengte (de grootste van de twee).',
+    overspanningMm: 'Uw opgegeven overspanning, of de slag plus de moerlengte en 50 mm uitloop (de grootste van de twee).',
     slagMm: overgenomen('de slag'),
     lagering: overgenomen('de lagerconfiguratie'),
     moermateriaal: overgenomen('het moermateriaal'),
@@ -6881,8 +6910,11 @@ var WizardLogica = (function () {
         herkomst[naam] = 'Aangenomen, want u koos "Weet ik niet"' + (bron[1] ? ': ' + bron[1] : '') + '.';
       }
     });
-    if (herkomst.krachtN && ontbreekt(a.kracht) && !ontbreekt(a.gewicht)) {
-      herkomst.krachtN = 'Berekend uit gewicht, geleiding en versnelling.';
+    if (herkomst.krachtN && !ontbreekt(a.gewicht)) {
+      herkomst.krachtN = ontbreekt(a.kracht) ? 'Berekend uit gewicht, geleiding en versnelling.'
+        : 'Berekend: uw externe kracht plus de kracht uit gewicht, geleiding en versnelling.';
+    } else if (herkomst.krachtN && !ontbreekt(a.kracht)) {
+      herkomst.krachtN = 'Overgenomen uit uw antwoord over de externe kracht.';
     }
     return herkomst;
   }
@@ -7084,6 +7116,31 @@ var WizardLogica = (function () {
             : ' Die zijden blijven daarom onbewerkt ("0").';
         }
       }
+    }
+
+    // v1.51 (opdrachtgever 13-10-2026, review B1): is het standaard
+    // vastlager (BKN) te zwak voor de axiale kracht, dan kiest het advies de
+    // lichtste WBK-uitvoering die het wel houdt, waar WBK bestaat (vanaf Ø32).
+    // Anders blijft BKN staan en meldt de vastlagertoets het.
+    if (!ds) {
+      var krachtVoorLager = naarAdviesInvoer(a, a.type).krachtN;
+      ['astap1', 'astap2'].forEach(function (zijde) {
+        if (cfg[zijde] !== 'BKN' || !(krachtVoorLager > 0)) return;
+        var bkn = Catalogus.lagerunitMaat('BKN', cfg.d, cfg.type);
+        var bknGrens = bkn === null ? null : Catalogus.lagerunitAxiaalKN('BKN', bkn);
+        if (bknGrens === null || krachtVoorLager <= bknGrens * 1000) return;
+        var wMaat = Catalogus.lagerunitMaat('WBK', cfg.d, cfg.type);
+        if (wMaat === null) return;
+        var uitvoering = Catalogus.wbkUitvoeringen(wMaat).filter(function (u) {
+          return Catalogus.lagerunitAxiaalKN('WBK', wMaat, u) * 1000 >= krachtVoorLager;
+        })[0];
+        if (!uitvoering) return;
+        cfg[zijde] = 'WBK' + uitvoering;
+        cfg.lagerunitMelding = (cfg.lagerunitMelding ? cfg.lagerunitMelding + ' ' : '') +
+          'Het standaard vastlager BKN' + String(bkn).padStart(2, '0') + ' houdt deze kracht niet (' +
+          String(bknGrens).replace('.', ',') + ' kN); de tool kiest daarom een WBK' +
+          String(wMaat).padStart(2, '0') + ' ' + uitvoering + '-lagerunit.';
+      });
     }
 
     // Herkomst: mechanisch afgeleid, geen nieuwe beslissing — elk veldnaam
