@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.46  13-10-2026  Review groep B: L voor linkse draad in de bestelcode; lagerunits bij trapeziumdiameters zoals kogelomloop; meldingen bij zwak vastlager, droog bedrijf en hoge tolerantie; rode samenvatting als een toets faalt; handbediend; stap 4 gesplitst; labels aangenomen/berekend; legenda; max. slag; vaste knoppen in het offertevenster
   1.45  12-10-2026  Review groep A: advies rekent met slag + moerlengte; typewissel, uitgangspunt zonder passende maat, leesbare foutmeldingen, lengtecontrole, telefoonkopbalk, toetsenbord in de wizard, contrast
   1.44  12-10-2026  FB-007: slag in de configurator; de totaallengte volgt de slag, met een melding als de slag niet past
   1.43  12-10-2026  FB-006: overspanning tussen de lagers volgt de totaallengte min de astappen
@@ -148,10 +149,16 @@ h1, h2, h3, .kop {
 /* FB-005 (v1.42): op brede schermen drie kolommen — Specificaties, Belasting
    & inbouw, uitkomsten — zodat de invoer half zo lang wordt. display:
    contents maakt de twee invoerkaarten zelf tot rasteritems. */
-@media (min-width: 1400px) {
+/* v1.46 (review B12): de drie kolommen al vanaf 1280px, zodat de kaart
+   Belasting & inbouw ook op een laptopscherm naast de specificaties staat
+   in plaats van eronder. Onder 1280px wordt de tekening te klein. */
+@media (min-width: 1280px) {
   #configuratorView.inhoud { max-width: 1680px; }
-  #configuratorView .raster { grid-template-columns: minmax(0, 360px) minmax(0, 360px) minmax(0, 1fr); }
+  #configuratorView .raster { grid-template-columns: minmax(0, 320px) minmax(0, 320px) minmax(0, 1fr); }
   #configuratorView .linkerkolom, #configuratorForm { display: contents; }
+}
+@media (min-width: 1400px) {
+  #configuratorView .raster { grid-template-columns: minmax(0, 360px) minmax(0, 360px) minmax(0, 1fr); }
 }
 
 /* ── Kaarten ── */
@@ -392,7 +399,9 @@ code.bestelcode {
   font-size: .89rem; color: var(--motion); background: var(--offwhite);
 }
 .offerte-contact-raster textarea:focus { outline: none; border-color: var(--linear); background: #fff; }
-.offerte-modal-voet { padding: 14px 18px; display: flex; justify-content: flex-end; gap: 10px; }
+/* v1.46 (review B12): de knoppen blijven onderin het venster zichtbaar. */
+.offerte-modal-voet { padding: 14px 18px; display: flex; justify-content: flex-end; gap: 10px;
+  position: sticky; bottom: 0; background: var(--oppervlak); border-top: 1px solid var(--rand); }
 
 /* ── Zelftest (taak 13) ───────────────────────────────────────────────
    Eigen, op zichzelf staand scherm — geen kaart/raster van de configurator
@@ -430,7 +439,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.45 · 12-10-2026</div>
+    <div class="versie" id="toolVersie">v1.46 · 13-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -441,7 +450,7 @@ code.bestelcode {
   </div>
   <div class="acties" id="actiesConfigurator" hidden>
     <button type="button" class="knop knop-reset" id="btnNaarVoorselectie">← Terug naar voorselectie</button>
-    <button type="button" class="knop knop-reset" id="btnReset">Reset</button>
+    <button type="button" class="knop knop-reset" id="btnReset" title="Zet de configurator terug op de standaardwaarden">Opnieuw beginnen</button>
     <button type="button" class="knop knop-offerte" id="btnOfferte">Offerte aanvragen</button>
   </div>
   </div>
@@ -451,7 +460,7 @@ code.bestelcode {
   <div class="wiz-inner">
     <div class="wiz-progress">
       <div class="wiz-progress-label">
-        <span>Stap <strong id="wizStepNum">1</strong> van 8</span>
+        <span>Stap <strong id="wizStepNum">1</strong> van <span id="wizStepTotaal">9</span></span>
         <span id="wizStepName">Type spindel</span>
       </div>
       <div class="wiz-progress-bar"><div class="wiz-progress-fill" id="wizProgressFill" style="width:12.5%"></div></div>
@@ -894,10 +903,22 @@ var Catalogus = (function () {
     { code: 'BFN', functie: 'los',  vorm: 'blok' }
   ];
 
+  // v1.46 (besluit opdrachtgever 13-10-2026, review A4): een diameter die
+  // alleen bij trapezium voorkomt (Tr 18, 22, 26, …) krijgt voorlopig de
+  // unit van de eerstvolgende kleinere kogelomloopdiameter in dezelfde
+  // indeling (Tr 18 → als Ø16), zodat de astap binnen de spindel blijft.
+  // Boven de grootste diameter van een unittype blijft het null, net als bij
+  // kogelomloop. Kogelomloopdiameters zelf veranderen niet.
   function lagerunitMaat(code, d) {
     var indeling = LAGERUNIT_INDELING[code];
     if (!indeling) throw new Error('onbekende lagerunit: ' + code);
-    return indeling[d] === undefined ? null : indeling[d];
+    if (indeling[d] !== undefined) return indeling[d];
+    var isKogelDiameter = kogelomloopMaten.some(function (m) { return m.d === d; });
+    if (isKogelDiameter) return null;
+    var kleiner = Object.keys(indeling).map(Number).filter(function (k) { return k < d; });
+    var grootste = Math.max.apply(null, Object.keys(indeling).map(Number));
+    if (!kleiner.length || d > grootste) return null;
+    return indeling[Math.max.apply(null, kleiner)];
   }
 
   // Toelaatbare axiale belasting van de VASTE lagerunit in kN (spec
@@ -1571,6 +1592,13 @@ var Bestelcode = (function () {
     return gevalideerd;
   }
 
+  // v1.46 (besluit opdrachtgever 13-10-2026): een extra L direct achter de
+  // maat geeft linkse draad aan, bij kogelomloop (SDK-1605L-…) en trapezium
+  // (BFM 40x7L A …). Rechts blijft zonder letter.
+  function linksLetter(c) {
+    return c.draadrichting === 'links' ? 'L' : '';
+  }
+
   // Kugelberger p.3:
   // [Type]-[DiameterSpoed]-[Voorspanning]-[Lengte]-[Klasse]-[LZ1]-[LZ2]-[Coating]
   function kogelomloop(c) {
@@ -1582,7 +1610,7 @@ var Bestelcode = (function () {
 
     var delen = [
       v.moertype,
-      Catalogus.maatCode(v.d, v.P),
+      Catalogus.maatCode(v.d, v.P) + linksLetter(c),
       v.voorspanning,
       v.lengte,
       v.klasse,
@@ -1602,7 +1630,7 @@ var Bestelcode = (function () {
 
     return [
       v.moertype,
-      v.d + 'x' + v.P,
+      v.d + 'x' + v.P + linksLetter(c),
       v.materiaalMoer,
       v.lengte,
       v.astap1,
@@ -1657,7 +1685,12 @@ var Bestelcode = (function () {
       return draadspindel(c);
     }
     if (c.type === 'kogelomloop') {
-      return { code: kogelomloop(c), opAanvraag: Catalogus.maatCodeUitbreiding(c.d, c.P) };
+      // Links is bij kogelomloop altijd op aanvraag (draadrichtingenVoor),
+      // net als een moertype met opAanvraag in de catalogus (FSCL).
+      var moer = Catalogus.kogelomloop.moertypen.filter(function (m) { return m.code === c.moertype; })[0];
+      return { code: kogelomloop(c),
+        opAanvraag: Catalogus.maatCodeUitbreiding(c.d, c.P) || c.draadrichting === 'links' ||
+          !!(moer && moer.opAanvraag) };
     }
     if (c.type === 'trapezium') {
       return { code: trapezium(c), opAanvraag: false };
@@ -2460,6 +2493,51 @@ var ConfiguratorLogica = (function () {
     return zwakste;
   }
 
+  // v1.46 (review B1, besluit opdrachtgever 13-10-2026): het advies slaat
+  // een maat met een te zwak vastlager niet over, maar meldt het.
+  function getalNL(x, dec) {
+    return x.toFixed(dec).replace('.', ',');
+  }
+  function vastlagerMelding(r) {
+    if (!r || !r.vastlager || r.vastlager.ok) return null;
+    return 'Het vastlager ' + r.vastlager.unit + ' neemt in de lengterichting maximaal ' +
+      getalNL(r.vastlager.grensKN, 1) + ' kN op, en deze toepassing vraagt ' +
+      getalNL(r.krachtN / 1000, 2) + ' kN. Kies in de configurator een grotere maat ' +
+      '(vanaf Ø32 kan ook een WBK-lagerunit), of laat MCA de lagering beoordelen.';
+  }
+
+  // v1.46 (review B8): de toetsen die niet voldoen, in gewone woorden, voor
+  // de rode samenvatting boven de uitkomsten. Leeg = alles in orde.
+  function mislukteToetsen(r) {
+    if (!r) return [];
+    var lijst = [];
+    function toets(ok, naam) { if (ok === false) lijst.push(naam); }
+    if (r.type === 'kogelomloop') {
+      toets(r.toerentalOk, 'het kritisch toerental');
+      toets(r.krachtOk, 'de knikbelasting');
+      toets(r.levensduurOk, 'de levensduur');
+      toets(r.statischOk, 'de statische belasting');
+      toets(r.dnOk, 'de toerentalgrens van de moer (d·n)');
+    } else if (r.type === 'trapezium') {
+      toets(r.toerentalOk, 'het kritisch toerental');
+      toets(r.knikOk, 'de knikbelasting');
+      toets(r.vlaktedrukOk, 'de vlaktedruk op de moer');
+      toets(r.krachtOk, 'het draaggetal van de moer');
+    } else if (r.type === 'draadspindel') {
+      toets(r.toerentalOk, 'het kritisch toerental');
+      toets(r.slankheidOk, 'de vrije lengte');
+      toets(r.krachtOk, 'het draagvermogen van de moer');
+    }
+    if (r.vastlager) toets(r.vastlager.ok, 'de belasting op het vastlager');
+    return lijst;
+  }
+  function toetsenSamenvatting(r) {
+    var lijst = mislukteToetsen(r);
+    if (!lijst.length) return null;
+    var vast = vastlagerMelding(r);
+    return 'Deze spindel voldoet niet aan ' + opsomming(lijst) + '.' + (vast ? '\n' + vast : '');
+  }
+
   function controleer(cfg, belasting) {
     if (!cfg || typeof cfg !== 'object') {
       throw new Error('cfg ontbreekt of is geen object, kreeg ' + cfg);
@@ -2646,6 +2724,8 @@ var ConfiguratorLogica = (function () {
         // Spec 2026-10-09-dn-lager-geleiding §2.2/§2.3 (v1.34).
         vastlager: vastlagerToets(cfg, belasting.krachtN),
         eta: etaT,
+        // v1.46 (B11): de µ waarmee het koppel gerekend is, voor de toelichting.
+        muKoppel: Rekenkern.moerWrijving(wrijvingMateriaal, belasting.smering),
         aandrijfkoppel: koppelT,
         losbreekkoppel: losbreek,
         motorvermogenMinimum: motorT.minimum,
@@ -2785,7 +2865,10 @@ var ConfiguratorLogica = (function () {
     herkomstNaTypewissel: herkomstNaTypewissel,
     belastingNaTypewissel: belastingNaTypewissel,
     maatVoor: maatVoor,
-    controleer: controleer
+    controleer: controleer,
+    vastlagerMelding: vastlagerMelding,
+    mislukteToetsen: mislukteToetsen,
+    toetsenSamenvatting: toetsenSamenvatting
   };
 })();
 </script>
@@ -5218,7 +5301,8 @@ var Maatvoering = (function () {
       uit.meldingen.push(DRAAD_TE_KORT);
     } else if (slag > 0) {
       uit.slag = slag;
-      uit.slagTekst = 'slag ' + fmt(slag);
+      // v1.46 (review B12): de maat is de grootst mogelijke slag, niet de opgegeven slag.
+      uit.slagTekst = 'max. slag ' + fmt(slag);
     } else {
       uit.meldingen.push(SLAG_TE_KORT);
     }
@@ -5516,6 +5600,9 @@ var WizardLogica = (function () {
         var kritiek = (cfg.advies.waarschuwingen || [])
           .filter(function (w) { return w.ernst === 'kritiek' && w.tekst !== Advies.REM_TEKST; })
           .map(function (w) { return w.tekst; });
+        // v1.46 (review B1): een te zwak vastlager als melding op de kaart.
+        var vastMelding = ConfiguratorLogica.vastlagerMelding(c);
+        if (vastMelding) kritiek.push(vastMelding);
         opties.push({
           type: type,
           maat: { code: maat.code || ('Ø' + maat.d + '×' + String(maat.P).replace('.', ',')), d: maat.d, P: maat.P },
@@ -5668,7 +5755,7 @@ var WizardLogica = (function () {
               'Klein (Ø6–16 mm), stil, zelfsmerende kunststof moer, optioneel spelingsvrij; ' +
               'voor lichte belasting tot circa 1 kN'),
             optie('weet-niet', 'Weet ik niet',
-              'De wizard gaat uit van een kogelomloopspindel en kijkt in stap 8 opnieuw naar het type')
+              'De wizard gaat uit van een kogelomloopspindel en kijkt in de laatste stap opnieuw naar het type')
           ]
         })
       ],
@@ -5915,7 +6002,7 @@ var WizardLogica = (function () {
   // ── Stap 4: bedrijfscondities ───────────────────────────────────────────
   // Voor alle takken dezelfde vragen; kogelomloop krijgt er sinds v1.20 drie
   // bij (levensduurVragen hieronder).
-  function stap4(tak) {
+  function belastingVragen(tak) {
     var vragen = [
       vraag({
         sleutel: 'bedrijf',
@@ -6050,12 +6137,29 @@ var WizardLogica = (function () {
       hint: 'De tijd voor één slag, van stilstand tot stilstand.'
     }));
     if (tak === 'kogelomloop') vragen = vragen.concat(levensduurVragen());
+    return vragen;
+  }
+
+  // v1.46 (review B7): stap 4 had zo'n twaalf vragen. Nu twee stappen:
+  // last en beweging (4), en hoe vaak en hoe lang de spindel draait (5).
+  function stap4(tak) {
     return {
       nummer: 4,
-      titel: 'Bedrijfscondities',
+      titel: 'Last en beweging',
       toelichting: 'Deze gegevens zijn indicatief; in de configurator kunt u later ' +
         'exacte waarden invullen.',
-      vragen: vragen
+      vragen: belastingVragen(tak).filter(function (v) { return GEBRUIK_SLEUTELS.indexOf(v.sleutel) === -1; })
+    };
+  }
+
+  var GEBRUIK_SLEUTELS = ['bedrijf', 'smering', 'urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren', 'trillingen'];
+  function stapGebruik(tak) {
+    return {
+      nummer: 5,
+      titel: 'Gebruik',
+      toelichting: 'Hoe vaak en hoe lang de spindel draait, en of hij gesmeerd wordt. Daarmee bepaalt ' +
+        'de tool de levensduur en de belastbaarheid.',
+      vragen: belastingVragen(tak).filter(function (v) { return GEBRUIK_SLEUTELS.indexOf(v.sleutel) !== -1; })
     };
   }
 
@@ -6125,7 +6229,7 @@ var WizardLogica = (function () {
       : 'Vanaf hier rekent de tool mee: overspanning en snelheid gaan direct in de ' +
         'knik- en toerentalcontrole.';
     return {
-      nummer: 5,
+      nummer: 6,
       titel: 'Inbouw',
       toelichting: toelichting,
       vragen: [
@@ -6185,7 +6289,7 @@ var WizardLogica = (function () {
         'het berekende koppel levert.'
       : 'Door het hoge rendement (circa 90%) blijven het benodigde koppel en motorvermogen laag.';
     return {
-      nummer: 6,
+      nummer: 7,
       titel: 'Aandrijving',
       toelichting: toelichting,
       vragen: [
@@ -6196,12 +6300,15 @@ var WizardLogica = (function () {
             optie('direct', 'Direct gekoppeld', 'Geen reductie'),
             optie('reductie', 'Via reductie of tandwielkast', null),
             optie('riem', 'Via riem-/poelie-overbrenging', null),
+            // v1.46 (review B4, opdrachtgever 13-10-2026): handverstelling.
+            optie('hand', 'Handbediend', 'Met een handwiel of slinger, zonder motor'),
             optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren')
           ]
         }),
         vraag({
           sleutel: 'motor',
           tekst: 'Motortype',
+          zichtbaar: function (a) { return a.aandrijving !== 'hand'; },
           opties: [
             optie('servo', 'Servomotor', null),
             optie('stappen', 'Stappenmotor', null),
@@ -6229,7 +6336,7 @@ var WizardLogica = (function () {
   // ── Stap 7: toebehoren en bewerking — identiek voor beide/alle takken ───
   function stap7(tak) {
     return {
-      nummer: 7,
+      nummer: 8,
       titel: 'Toebehoren en bewerking',
       toelichting: 'Welke lagerunits u kunt kiezen, volgt in de configurator ' +
         'uit de gekozen diameter.',
@@ -6262,6 +6369,7 @@ var WizardLogica = (function () {
         vraag({
           sleutel: 'koppeling',
           tekst: 'Koppeling tussen motor en spindel',
+          zichtbaar: function (a) { return a.aandrijving !== 'hand'; },
           opties: [
             optie('ja', 'Ja', null),
             optie('nee', 'Nee / heb ik al', null)
@@ -6282,7 +6390,7 @@ var WizardLogica = (function () {
 
   function stap8() {
     return {
-      nummer: 8,
+      nummer: 9,
       titel: 'Resultaat en advies',
       toelichting: 'Dit advies volgt uit uw antwoorden. In de configurator kunt u alles nog aanpassen.',
       vragen: []
@@ -6300,6 +6408,7 @@ var WizardLogica = (function () {
       stap2(),
       stap3(tak),
       stap4(tak),
+      stapGebruik(tak),
       stap5(tak),
       stap6(tak),
       stap7(tak),
@@ -6375,11 +6484,30 @@ var WizardLogica = (function () {
     return Rekenkern.smeringOntbreekt(type, ontbreekt(a.moermateriaal) ? 'brons' : a.moermateriaal, a.smering);
   }
 
+  // v1.46 (review B3): de klant hoort al bij de smeringsvraag dat droog
+  // bedrijf geen advies geeft, niet pas in stap 8. Geen optie "Weet ik
+  // niet" (besluit opdrachtgever 13-10-2026).
+  function smeringMelding(a) {
+    if (!smeringOntbreekt(a)) return null;
+    return a.type === 'trapezium'
+      ? 'Met een bronzen moer en zonder smering geeft de tool geen advies: u stuurt dan uw gegevens naar ' +
+        'de product engineers van MCA. Met een kunststof moer kan de tool wel rekenen.'
+      : 'Zonder smering geeft de tool voor een kogelomloopspindel geen advies: u stuurt dan uw gegevens ' +
+        'naar de product engineers van MCA.';
+  }
+
   function vraagtEngineering(a) {
     if (a.type !== undefined && a.type !== 'kogelomloop' && a.type !== 'weet-niet') return false;
     var nauw = a.nauwkeurigheid;
     if (nauw !== 'herhaal' && nauw !== 'positie' && nauw !== 'beide') return false;
     return a.tolerantie === 'zeerhoog' || a.tolerantie === 'hoog';
+  }
+
+  // v1.46 (review B9): al in stap 2 zeggen dat deze tolerantie via MCA loopt.
+  function precisieMelding(a) {
+    if (!vraagtEngineering(a)) return null;
+    return 'Voor deze tolerantie geeft de tool geen automatisch advies: de product engineers van MCA ' +
+      'bepalen samen met u de spindel. Maak de vragen wel af; uw antwoorden gaan mee in de adviesaanvraag.';
   }
 
   // 'Ontbreekt' (undefined/null/lege string) is iets anders dan 'is nul'.
@@ -6640,15 +6768,50 @@ var WizardLogica = (function () {
     koppeling: overgenomen('de koppeling')
   };
 
+  // v1.46 (review B6): koos de klant "Weet ik niet", dan is de waarde een
+  // aanname van de tool, geen antwoord; een kracht die uit het gewicht
+  // volgt, is berekend. De ui maakt daar het label "aangenomen" of
+  // "berekend" van (herkomstLabel).
+  var AANNAME_BRON = {
+    lagering: ['lagering', 'de tool kiest de lagerconfiguratie op basis van uw andere antwoorden'],
+    belastingsaart: ['belastingsaart', 'de tool rekent met de zwaarste belastingsaart'],
+    orientatie: ['orientatie', 'de tool rekent voorzichtigheidshalve met verticaal'],
+    bedrijf: ['bedrijf', null],
+    materiaal: ['omgeving', 'de tool gaat uit van de standaarduitvoering'],
+    materiaalMoer: ['omgeving', 'de tool gaat uit van de standaarduitvoering'],
+    materiaalSpindel: ['omgeving', 'de tool gaat uit van de standaarduitvoering'],
+    klasse: ['nauwkeurigheid', null], voorspanning: ['nauwkeurigheid', null],
+    draadCoating: ['coating', 'de tool gaat uit van de standaarduitvoering']
+  };
+  function herkomstMetAannames(herkomst, a) {
+    if (!a) return herkomst;
+    Object.keys(herkomst).forEach(function (naam) {
+      var bron = AANNAME_BRON[naam];
+      if (bron && (a[bron[0]] === 'weetniet' || a[bron[0]] === 'weet-niet')) {
+        herkomst[naam] = 'Aangenomen, want u koos "Weet ik niet"' + (bron[1] ? ': ' + bron[1] : '') + '.';
+      }
+    });
+    if (herkomst.krachtN && ontbreekt(a.kracht) && !ontbreekt(a.gewicht)) {
+      herkomst.krachtN = 'Berekend uit gewicht, geleiding en versnelling.';
+    }
+    return herkomst;
+  }
+  // Het label bij een herkomstreden.
+  function herkomstLabel(reden) {
+    if (/^Aangenomen/.test(reden)) return 'aangenomen';
+    if (/^Berekend/.test(reden)) return 'berekend';
+    return 'uit voorselectie';
+  }
+
   // Los van de doorrekening: geldt ook als naarConfiguratie() geen maat
   // vindt (dan wel belasting, geen bestelcode). Zichtbaarheid komt uit
   // dezelfde bron als het configuratorscherm zelf.
-  function belastingHerkomst(tak) {
+  function belastingHerkomst(tak, a) {
     var r = {};
     ConfiguratorLogica.belastingVelden(tak).forEach(function (v) {
       if (v.zichtbaar && HERKOMST_REDEN[v.naam]) r[v.naam] = HERKOMST_REDEN[v.naam];
     });
-    return r;
+    return herkomstMetAannames(r, a);
   }
 
   // Werpt door naar Advies.kies() (onbekend type, niet-eindige/niet-
@@ -6834,6 +6997,7 @@ var WizardLogica = (function () {
     Object.keys(HERKOMST_REDEN).forEach(function (naam) {
       if (cfg[naam] !== undefined) cfg.herkomst[naam] = HERKOMST_REDEN[naam];
     });
+    herkomstMetAannames(cfg.herkomst, a);
 
     var uit = ConfiguratorLogica.normaliseer(cfg);
     uit.lengte = totaalLengte(a, uit);
@@ -6852,10 +7016,13 @@ var WizardLogica = (function () {
     naarAdviesInvoer: naarAdviesInvoer,
     configuratorBelasting: configuratorBelasting,
     belastingHerkomst: belastingHerkomst,
+    herkomstLabel: herkomstLabel,
     belastingBijConfiguratie: belastingBijConfiguratie,
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
     bewegingsControle: bewegingsControle,
+    smeringMelding: smeringMelding,
+    precisieMelding: precisieMelding,
     smeringOntbreekt: smeringOntbreekt,
     STAP8_MINIATUUR_TOELICHTING: STAP8_MINIATUUR_TOELICHTING,
     SIGNALEN: SIGNALEN,
@@ -6984,6 +7151,7 @@ var Offerte = (function () {
   var VOORSELECTIE_WAARDEN = {
     ja: 'ja', nee: 'nee', weetniet: 'weet ik niet', geen: 'geen',
     direct: 'direct gekoppeld', reductie: 'via reductie of tandwielkast', riem: 'via riemoverbrenging',
+    hand: 'handbediend',
     servo: 'servomotor', stappen: 'stappenmotor', onbekend: 'nog niet bekend',
     beide: 'vast + los lager', vastalleen: 'alleen vastlager',
     standaard: 'standaard maatvoering', tekening: 'op eigen tekening',
@@ -8472,7 +8640,7 @@ var Afbeeldingen = (function () {
     badge.className = 'herkomst-badge';
     badge.id = badgeId(voorvoegsel, veldnaam);
     badge.title = reden;
-    badge.textContent = 'uit voorselectie';
+    badge.textContent = WizardLogica.herkomstLabel(reden);
     labelEl.appendChild(badge);
   }
   function wisHerkomst(bron, veldnaam, voorvoegsel) {
@@ -9096,17 +9264,34 @@ var Afbeeldingen = (function () {
         // v1.45: boven de tabel geen "0,0 N/mm²; veiligheid 0,00".
         : 'de glijsnelheid ligt boven de tabel voor dit moermateriaal') + ')',
       r.vlaktedrukOk));
-    inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (PV-waarde ' + fmt(r.pvWaarde, 0) +
-      ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
+    inhoud.appendChild(regel('Toelaatbare inschakelduur: ' + r.edMax + ' % (' + edPerUur(r.edMax) +
+      '; PV-waarde ' + fmt(r.pvWaarde, 0) + ' N/mm²·m/min, f_i ' + fmt(r.fi, 2) + '); ' + r.edSmering));
+  }
+
+  // v1.46 (review B5): de inschakelduur ook als tijd per uur.
+  function edPerUur(ed) {
+    if (ed >= 100) return 'continu';
+    var seconden = Math.round(ed / 100 * 3600);
+    return 'circa ' + (seconden >= 60 ? Math.round(seconden / 60) + ' minuten' : seconden + ' seconden') +
+      ' per uur';
+  }
+
+  // v1.46 (review B5): uitleg bij de tekens en afkortingen in de grenzen.
+  function grenzenLegenda(type) {
+    return '✓ voldoet · ✗ voldoet niet. Kritisch toerental (n_cr,max): het hoogste toerental voordat ' +
+      'de spindel gaat trillen. ' + (type === 'draadspindel' ? ''
+        : 'Knikbelasting (F_k,max): de hoogste drukkracht voordat de spindel uitknikt. ') +
+      (type === 'trapezium' ? 'PV-waarde: vlaktedruk maal glijsnelheid; f_i: factor voor de belastingsaart. ' : '') +
+      'Benodigd en opgegeven: de waarden van uw toepassing.';
   }
 
   function voegTrapeziumKnikToe(inhoud, r) {
     inhoud.appendChild(regelMetIcoon(
-      'Kritisch toerental n_cr,max: ' + fmt(r.nCrMax, 0) + ' /min (benodigd: ' +
-      fmt(r.n, 0) + ' /min)', r.toerentalOk));
+      'Kritisch toerental n_cr,max: ' + fmtDuizend(r.nCrMax) + ' /min (benodigd: ' +
+      fmtDuizend(r.n) + ' /min)', r.toerentalOk));
     inhoud.appendChild(regelMetIcoon(
-      'Knikbelasting F_k,max: ' + fmt(r.FkMax, 0) + ' N (opgegeven: ' +
-      fmt(r.krachtN, 0) + ' N)', r.knikOk));
+      'Knikbelasting F_k,max: ' + fmtDuizend(r.FkMax) + ' N (opgegeven: ' +
+      fmtDuizend(r.krachtN) + ' N)', r.knikOk));
   }
 
   function toonGrenzenEnKoppel(cfg, belasting) {
@@ -9133,14 +9318,23 @@ var Afbeeldingen = (function () {
 
     grenzenKaart.hidden = false;
 
+    // v1.46 (review B8/B1): bovenaan de kaart wat niet voldoet.
+    var samenvatting = ConfiguratorLogica.toetsenSamenvatting(resultaat);
+    if (samenvatting) {
+      grenzenInhoud.appendChild(Object.assign(document.createElement('p'), {
+        id: 'toetsenSamenvatting', className: 'melding fout meerregelig',
+        textContent: samenvatting + '\nKies een andere maat of lagerunit, of pas de belasting aan.'
+      }));
+    }
+
     if (resultaat.type === 'kogelomloop') {
       grenzenTitel.textContent = 'Doorgerekende grenzen';
       grenzenInhoud.appendChild(regelMetIcoon(
-        'Kritisch toerental n_cr,max: ' + fmt(resultaat.nCrMax, 0) + ' /min (benodigd: ' +
-        fmt(resultaat.n, 0) + ' /min)', resultaat.toerentalOk));
+        'Kritisch toerental n_cr,max: ' + fmtDuizend(resultaat.nCrMax) + ' /min (benodigd: ' +
+        fmtDuizend(resultaat.n) + ' /min)', resultaat.toerentalOk));
       grenzenInhoud.appendChild(regelMetIcoon(
-        'Knikbelasting F_k,max: ' + fmt(resultaat.FkMax, 0) + ' N (opgegeven: ' +
-        fmt(resultaat.krachtN, 0) + ' N)', resultaat.krachtOk));
+        'Knikbelasting F_k,max: ' + fmtDuizend(resultaat.FkMax) + ' N (opgegeven: ' +
+        fmtDuizend(resultaat.krachtN) + ' N)', resultaat.krachtOk));
       voegKogelToetsenToe(grenzenInhoud, resultaat);
 
       koppelKaart.hidden = false;
@@ -9153,14 +9347,14 @@ var Afbeeldingen = (function () {
     } else if (resultaat.type === 'draadspindel') {
       grenzenTitel.textContent = 'Doorgerekende grenzen';
       grenzenInhoud.appendChild(regelMetIcoon(
-        'Kritisch toerental n_cr,max: ' + fmt(resultaat.nCrMax, 0) + ' /min (benodigd: ' +
-        fmt(resultaat.n, 0) + ' /min)', resultaat.toerentalOk));
+        'Kritisch toerental n_cr,max: ' + fmtDuizend(resultaat.nCrMax) + ' /min (benodigd: ' +
+        fmtDuizend(resultaat.n) + ' /min)', resultaat.toerentalOk));
       grenzenInhoud.appendChild(regelMetIcoon(
         'Vrije lengte: ' + fmt(resultaat.overspanningMm, 0) + ' mm (slankheidsgrens: ' +
         fmt(resultaat.Lmax, 0) + ' mm)', resultaat.slankheidOk));
       grenzenInhoud.appendChild(regelMetIcoon(
-        'Draagvermogen moer bij ' + fmt(resultaat.n, 0) + ' /min: ' + fmt(resultaat.draagvermogenN, 0) +
-        ' N (opgegeven: ' + fmt(resultaat.krachtN, 0) + ' N)', resultaat.krachtOk));
+        'Draagvermogen moer bij ' + fmtDuizend(resultaat.n) + ' /min: ' + fmtDuizend(resultaat.draagvermogenN) +
+        ' N (opgegeven: ' + fmtDuizend(resultaat.krachtN) + ' N)', resultaat.krachtOk));
       grenzenInhoud.appendChild(regel('Zelfremming: ' + resultaat.zelfremklasse));
       grenzenInhoud.appendChild(toelichting(Rekenkern.KLASSE_UITLEG[resultaat.zelfremklasse] || ''));
       grenzenInhoud.appendChild(toelichting(resultaat.indicatiefMelding));
@@ -9198,10 +9392,14 @@ var Afbeeldingen = (function () {
       koppelInhoud.appendChild(regel('Losbreekkoppel: ' + fmt(resultaat.losbreekkoppel, 2) + ' Nm'));
       koppelInhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(resultaat.motorvermogenAanbevolen, 3) +
         ' kW (minimaal ' + fmt(resultaat.motorvermogenMinimum, 3) + ' kW)'));
+      // v1.46 (review B11, opdrachtgever 13-10-2026): de toelichting noemt
+      // de µ uit de tabel van MCA waarmee het koppel echt gerekend is.
       koppelInhoud.appendChild(toelichting(
-        'Het koppel hierboven is gerekend met een hoge wrijving (hoge µ), de zelfremklasse ' +
-        'met een lage wrijving (lage µ). Zo valt geen van beide uitkomsten te gunstig uit.'));
+        'Het koppel hierboven is gerekend met de wrijving van de moer uit de tabel van MCA: µ ' +
+        fmt(resultaat.muKoppel, 2) + ' (' + (belasting.smering === 'droog' ? 'droog' : 'gesmeerd') + '). ' +
+        'De zelfremklasse is gerekend met een lage wrijving, zodat die niet te gunstig uitvalt.'));
     }
+    grenzenInhoud.appendChild(toelichting(grenzenLegenda(resultaat.type)));
     // Teruggegeven zodat toonRemWaarschuwing() de berekende zelfremklasse kan
     // gebruiken zonder een tweede keer door te rekenen.
     return resultaat;
@@ -9959,6 +10157,11 @@ var Afbeeldingen = (function () {
       opt.addEventListener('click', function () {
         wizAntwoorden[vraag.sleutel] = optie.waarde;
         if (vraag.sleutel === 'type') delete wizAntwoorden.typeOorspronkelijk;
+        // v1.46 (B4): handbediend heeft geen motor en geen motorkoppeling.
+        if (vraag.sleutel === 'aandrijving' && optie.waarde === 'hand') {
+          delete wizAntwoorden.motor;
+          delete wizAntwoorden.koppeling;
+        }
         if (vraag.sleutel === 'nauwkeurigheid') {
           if (optie.waarde === 'geen') {
             // Geen scherpere tolerantie-eis dan 0,2 mm: de tolerantievraag
@@ -10544,6 +10747,22 @@ var Afbeeldingen = (function () {
       peInhoud.appendChild(peKnop);
       peKaart.appendChild(peInhoud);
       resultaatDiv.appendChild(peKaart);
+      // v1.46 (review B3): niet doodlopen; terug naar de smeringsvraag.
+      var peActies = document.createElement('div');
+      peActies.className = 'wiz-nav';
+      var peTerug = document.createElement('button');
+      peTerug.type = 'button';
+      peTerug.className = 'knop knop-ghost';
+      peTerug.id = 'wizSmeringPasAan';
+      peTerug.textContent = 'Pas antwoorden aan';
+      peTerug.addEventListener('click', function () {
+        var stapIndex = wizStappen().findIndex(function (st) {
+          return st.vragen.some(function (v) { return v.sleutel === 'smering'; });
+        });
+        wizGoTo(stapIndex >= 0 ? stapIndex : 0);
+      });
+      peActies.appendChild(peTerug);
+      resultaatDiv.appendChild(peActies);
       wizContainer.appendChild(resultaatDiv);
       return;
     }
@@ -10724,6 +10943,13 @@ var Afbeeldingen = (function () {
       try {
         var belasting = WizardLogica.belastingBijConfiguratie(wizBelastingUitAntwoorden(wizAntwoorden), cfg);
         var check = ConfiguratorLogica.controleer(cfg, belasting);
+        // v1.46 (review B8/B1): voldoet een toets niet, dan een rode melding
+        // boven het advies, niet alleen een klein ✗ in de grenzenkaart.
+        var samenvatting = ConfiguratorLogica.toetsenSamenvatting(check);
+        if (samenvatting) {
+          resultaatDiv.insertBefore(wizAlert(samenvatting +
+            '\nPas de antwoorden aan, of kies in de configurator een andere maat.', 'kritiek'), kaart);
+        }
         var grenzenKaart = document.createElement('div');
         grenzenKaart.className = 'kaart';
         var grenzenKop = document.createElement('div');
@@ -10735,22 +10961,22 @@ var Afbeeldingen = (function () {
 
         if (check.type === 'kogelomloop') {
           grenzenInhoud.appendChild(regelMetIcoon(
-            'Kritisch toerental n_cr,max: ' + fmt(check.nCrMax, 0) + ' /min (benodigd: ' +
-            fmt(check.n, 0) + ' /min)', check.toerentalOk));
+            'Kritisch toerental n_cr,max: ' + fmtDuizend(check.nCrMax) + ' /min (benodigd: ' +
+            fmtDuizend(check.n) + ' /min)', check.toerentalOk));
           grenzenInhoud.appendChild(regelMetIcoon(
-            'Knikbelasting F_k,max: ' + fmt(check.FkMax, 0) + ' N (opgegeven: ' +
-            fmt(check.krachtN, 0) + ' N)', check.krachtOk));
+            'Knikbelasting F_k,max: ' + fmtDuizend(check.FkMax) + ' N (opgegeven: ' +
+            fmtDuizend(check.krachtN) + ' N)', check.krachtOk));
           voegKogelToetsenToe(grenzenInhoud, check);
         } else if (check.type === 'draadspindel') {
           grenzenInhoud.appendChild(regelMetIcoon(
-            'Kritisch toerental n_cr,max: ' + fmt(check.nCrMax, 0) + ' /min (benodigd: ' +
-            fmt(check.n, 0) + ' /min)', check.toerentalOk));
+            'Kritisch toerental n_cr,max: ' + fmtDuizend(check.nCrMax) + ' /min (benodigd: ' +
+            fmtDuizend(check.n) + ' /min)', check.toerentalOk));
           grenzenInhoud.appendChild(regelMetIcoon(
             'Vrije lengte: ' + fmt(check.overspanningMm, 0) + ' mm (slankheidsgrens: ' +
             fmt(check.Lmax, 0) + ' mm)', check.slankheidOk));
           grenzenInhoud.appendChild(regelMetIcoon(
-            'Draagvermogen moer bij ' + fmt(check.n, 0) + ' /min: ' + fmt(check.draagvermogenN, 0) +
-            ' N (opgegeven: ' + fmt(check.krachtN, 0) + ' N)', check.krachtOk));
+            'Draagvermogen moer bij ' + fmtDuizend(check.n) + ' /min: ' + fmtDuizend(check.draagvermogenN) +
+            ' N (opgegeven: ' + fmtDuizend(check.krachtN) + ' N)', check.krachtOk));
         } else {
           voegTrapeziumKnikToe(grenzenInhoud, check);
           grenzenInhoud.appendChild(regel('Spoedhoek: ' + fmt(check.phi, 2) + '°'));
@@ -10764,8 +10990,15 @@ var Afbeeldingen = (function () {
           voegVastlagerToe(grenzenInhoud, check);
         }
         grenzenInhoud.appendChild(regel('Aandrijfkoppel: ' + fmt(check.aandrijfkoppel, 2) + ' Nm'));
-        grenzenInhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(check.motorvermogenAanbevolen, 3) +
-          ' kW (minimaal ' + fmt(check.motorvermogenMinimum, 3) + ' kW)'));
+        if (wizAntwoorden.aandrijving === 'hand') {
+          // v1.46 (B4): geen motor, dus geen motorvermogen.
+          grenzenInhoud.appendChild(toelichting('Handbediend: dit koppel levert de bediener aan het ' +
+            'handwiel of de slinger, zonder overbrenging.'));
+        } else {
+          grenzenInhoud.appendChild(regel('Aanbevolen motorvermogen: ' + fmt(check.motorvermogenAanbevolen, 3) +
+            ' kW (minimaal ' + fmt(check.motorvermogenMinimum, 3) + ' kW)'));
+        }
+        grenzenInhoud.appendChild(toelichting(grenzenLegenda(check.type)));
         grenzenKaart.appendChild(grenzenInhoud);
         resultaatDiv.appendChild(grenzenKaart);
       } catch (foutBelasting) {
@@ -10859,7 +11092,7 @@ var Afbeeldingen = (function () {
       waarden.astap1 = wizKaleAstapCode(cfg.astap1);
       waarden.astap2 = wizKaleAstapCode(cfg.astap2);
     }
-    huidigeBelastingHerkomst = WizardLogica.belastingHerkomst(tak);
+    huidigeBelastingHerkomst = WizardLogica.belastingHerkomst(tak, wizAntwoorden);
     wizardVoorselectie = Object.assign({}, wizAntwoorden);
     // Alleen de draadspindel vraagt de aandrijfzijde (spec
     // 2026-09-26-aandrijfeinde-koppeling §5). Wisselt de klant daarna van tak,
@@ -10895,7 +11128,21 @@ var Afbeeldingen = (function () {
   // Spec 2026-10-12-fb002-004 §1 (v1.37, FB-002): live onder de vragen van
   // stap 4 — beweging (slag, snelheid, versnelling, tijd) en kracht die niet
   // samen kunnen. Alleen een waarschuwing; de klant kan gewoon verder.
+  // v1.46 (review B3/B9): een melding direct onder de vraag zelf, zodat de
+  // klant niet pas in de laatste stap hoort dat de tool geen advies geeft.
+  var WIZ_LIVE_MELDING = {
+    smering: { id: 'wizSmeringMelding', soort: 'kritiek', tekst: function (a) { return WizardLogica.smeringMelding(a); } },
+    tolerantie: { id: 'wizPrecisieMelding', soort: 'info', tekst: function (a) { return WizardLogica.precisieMelding(a); } }
+  };
   function wizWerkBewegingMeldingBij() {
+    Object.keys(WIZ_LIVE_MELDING).forEach(function (sleutel) {
+      var live = WIZ_LIVE_MELDING[sleutel];
+      var liveVak = document.getElementById(live.id);
+      if (!liveVak) return;
+      liveVak.innerHTML = ''; // wist de container; geen data hierin
+      var liveTekst = live.tekst(wizAntwoorden);
+      if (liveTekst) liveVak.appendChild(wizAlert(liveTekst, live.soort));
+    });
     var vak = document.getElementById('wizBewegingMelding');
     if (!vak) return;
     vak.innerHTML = ''; // wist de container; geen data hierin
@@ -10916,6 +11163,8 @@ var Afbeeldingen = (function () {
     var stap = stappen[wizStapIndex];
 
     wizStepNumEl.textContent = stap.nummer;
+    var wizStepTotaalEl = document.getElementById('wizStepTotaal');
+    if (wizStepTotaalEl) wizStepTotaalEl.textContent = stappen.length;
     wizStepNameEl.textContent = stap.titel;
     wizProgressFillEl.style.width = (stap.nummer / stappen.length * 100) + '%';
 
@@ -10972,6 +11221,12 @@ var Afbeeldingen = (function () {
       }
       vorigeGroep = vraag.groep || null;
       wizContainer.appendChild(wizBouwVraag(vraag));
+      if (WIZ_LIVE_MELDING[vraag.sleutel]) {
+        var liveVak = document.createElement('div');
+        liveVak.id = WIZ_LIVE_MELDING[vraag.sleutel].id;
+        liveVak.setAttribute('aria-live', 'polite');
+        wizContainer.appendChild(liveVak);
+      }
     });
     if (stap.vragen.some(function (v) { return v.sleutel === 'slagtijd'; })) {
       var bewegingMelding = document.createElement('div');
