@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.54  14-10-2026  50 mm uitloop als keuze (wizard en configurator); melding bij een RVS-moer op RVS of staal; kerndiameter RSCR gelijk aan FSCR; µ brons 0,1/0,05 zoals Kammerer; FB-008 tekst lead screw stap 2; FB-009 kogelomloopkaart toont "Zelfremming: geen"
   1.53  13-10-2026  Besluiten controle (2): f_w volgt ook de trillingen (minstens 3,0 bij trillingen of weet ik niet); kerndiameter per moer FSCR/FSCL/FDCR; kritisch toerental trapezium op d3; trapezium nooit aanbevolen bij continu bedrijf; let-op boven 1,5 m/s glijsnelheid; bewegingsprofiel in de adviesaanvraag
   1.52  13-10-2026  Bewegingsprofiel als geavanceerde optie (wizard en configurator): levensduur met gemiddelde last en snelheid, inschakelduur trapezium als toets, fasen in de offerte
   1.51  13-10-2026  Besluiten controle: kracht horizontaal µ·m·g + F_extern + m·a (standaard 2 m/s²), opgegeven kracht telt bij het gewicht op; 50 mm uitloop tussen de lagers; trapeziumkoppel met 1,07·µ zoals MCAlc; WBK als het standaard vastlager te zwak is
@@ -457,7 +458,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.53 · 13-10-2026</div>
+    <div class="versie" id="toolVersie">v1.54 · 14-10-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -742,8 +743,8 @@ var Catalogus = (function () {
   // v1.53 (opdrachtgever 13-10-2026): kerndiameter d3 per moer, uit de
   // kogeldiameter in de leveranciersgegevens ("General Data"). FSCL is gelijk
   // aan FSCR. Bij de meeste maten is dat dezelfde d3 als in D3; bij FSCR
-  // 16×10 en 40×20 is hij kleiner dan bij de SDH van die maat. RSCR heeft
-  // nog geen eigen opgave en rekent met D3.
+  // 16×10 en 40×20 is hij kleiner dan bij de SDH van die maat.
+  // v1.54 (opdrachtgever 14-10-2026): RSCR is ook gelijk aan FSCR.
   var FSCR_D3 = { '16x5': 12.7, '16x10': 12.7, '20x5': 16.7, '25x5': 21.7, '25x10': 21.7,
     '32x5': 28.7, '32x10': 27.1, '32x20': 27.1, '40x5': 36.7, '40x10': 34, '40x20': 34,
     '50x10': 43, '63x10': 56.9 };
@@ -751,7 +752,8 @@ var Catalogus = (function () {
     FDCR: { '16x5': 12.7, '20x5': 16.7, '25x5': 21.7, '32x5': 28.7, '32x10': 27.1,
       '40x5': 36.7, '40x10': 34, '50x10': 43 },
     FSCR: FSCR_D3,
-    FSCL: FSCR_D3
+    FSCL: FSCR_D3,
+    RSCR: FSCR_D3
   };
 
   // d3 [mm] voor knik en kritisch toerental: de eigen waarde van de moer als
@@ -2354,6 +2356,9 @@ var ConfiguratorLogica = (function () {
     // FB-007 (v1.44): de slag uit de voorselectie, aan te passen. Optioneel;
     // de doorrekening gebruikt hem niet, de lengte volgt hem (zie ui-blok).
     { naam: 'slagMm',           label: 'Slag (mm, optioneel)',            zichtbaar: BEIDE, opties: null },
+    // v1.54 (opdrachtgever 14-10-2026): de 50 mm uitloop tussen de lagers is
+    // een keuze. Telt mee in de lengte uit de slag en in de vrije lengte.
+    { naam: 'uitloop',          label: 'Uitloop tussen de lagers',        zichtbaar: BEIDE, opties: ['ja', 'nee'] },
     // opties wordt hieronder in belastingVelden() gevuld vanuit
     // Rekenkern.LAGERFACTOR: die is nog niet geladen op het moment dat dit
     // array-literal wordt gebouwd (dit blok staat vóór rekenkern), maar wél
@@ -2808,6 +2813,8 @@ var ConfiguratorLogica = (function () {
         FkMax: knikT.FkMax,
         knikOk: belasting.krachtN <= knikT.FkMax,
         moerlengte: lm,
+        // v1.54 (V3): melding bij een RVS-moer op RVS of staal.
+        materiaalMelding: Rekenkern.gelijkMateriaalMelding(cfg.materiaalMoer, cfg.materiaalSpindel),
         // Zelfde naam als bij kogelomloop hierboven (krachtN/krachtOk): één
         // herkenbaar in-orde-of-niet-veld ongeacht het type, zodat een
         // aanroeper niet per tak hoeft te weten hoe de krachttoets heet.
@@ -2898,22 +2905,24 @@ var ConfiguratorLogica = (function () {
 
   // FB-007 (v1.44): de totaallengte bij een slag, zoals de wizard hem
   // opbouwt: slag + moerlengte + beide astappen, naar boven afgerond.
-  function lengteUitSlag(cfg, slagMm) {
-    return Math.ceil(slagMm + moerLengte(cfg) + Rekenkern.UITLOOP_MM +
+  // v1.54: uitloop 'ja' (standaard, 50 mm) of 'nee' (0 mm).
+  function lengteUitSlag(cfg, slagMm, uitloop) {
+    return Math.ceil(slagMm + moerLengte(cfg) + Rekenkern.uitloopMm(uitloop) +
       astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
   }
 
   // FB-007 (v1.44): past de slag met de moer tussen de lagers? Zo niet, dan
   // een melding met de grootste slag die bij deze overspanning past.
-  function slagMelding(cfg, slagMm, overspanningMm) {
+  function slagMelding(cfg, slagMm, overspanningMm, uitloop) {
     if (!(slagMm > 0) || !(overspanningMm > 0)) return null;
     var moer = moerLengte(cfg);
-    var max = overspanningMm - moer - Rekenkern.UITLOOP_MM;
+    var uit = Rekenkern.uitloopMm(uitloop);
+    var max = overspanningMm - moer - uit;
     if (slagMm <= max) return null;
     return max > 0
       ? 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte is de slag maximaal ' +
         Math.floor(max) + ' mm (overspanning ' + Math.round(overspanningMm) + ' mm min de moer van ' +
-        Math.round(moer) + ' mm en ' + Rekenkern.UITLOOP_MM + ' mm uitloop).'
+        Math.round(moer) + ' mm' + (uit ? ' en ' + uit + ' mm uitloop' : '') + ').'
       : 'De slag van ' + Math.round(slagMm) + ' mm past niet: bij deze lengte past de moer niet tussen de lagers.';
   }
 
@@ -3351,7 +3360,10 @@ var Rekenkern = (function () {
   var VERSNELLING_STANDAARD_HORIZONTAAL = 2;
   // v1.51 (opdrachtgever 13-10-2026): tussen de lagers rekent MCA naast de
   // slag en de moerlengte standaard 50 mm uitloop.
+  // v1.54 (opdrachtgever 14-10-2026): de uitloop is een keuze, 'ja' (standaard)
+  // of 'nee'. Alleen 'nee' schakelt hem uit.
   var UITLOOP_MM = 50;
+  function uitloopMm(keuze) { return keuze === 'nee' ? 0 : UITLOOP_MM; }
   function axialeKrachtUitGewicht(massaKg, nietHorizontaal, geleiding, versnelling) {
     positiefGetal(massaKg, 'massaKg');
     var a = (versnelling === undefined || versnelling === null)
@@ -3422,6 +3434,21 @@ var Rekenkern = (function () {
     if (typeof vg !== 'number' || vg <= GLIJSNELHEID_LET_OP) return null;
     return 'De glijsnelheid in de moer is ' + nlGetal(vg, 2) + ' m/s. Boven 1,5 m/s slijt de moer snel door ' +
       'de wrijvingswarmte. Een grotere spoed verlaagt de glijsnelheid; anders adviseren wij een kogelomloopspindel.';
+  }
+
+  // v1.54 (opdrachtgever 14-10-2026, V3): een RVS-moer op een spindel van
+  // RVS of staal. Gelijke materialen op elkaar gaan bij een dynamische
+  // belasting vreten (materiaalkeuze moeren, trapeziumdraad.nl). Codes uit de
+  // bestelcode: moer D/E = RVS; spindel A/B = C35/C45, D/E = RVS.
+  function gelijkMateriaalMelding(materiaalMoer, materiaalSpindel) {
+    if (materiaalMoer !== 'D' && materiaalMoer !== 'E') return null;
+    var rvs = materiaalSpindel === 'D' || materiaalSpindel === 'E';
+    return (rvs ? 'Moer en spindel zijn allebei van RVS. '
+      : 'De RVS-moer loopt op een stalen spindel. ') +
+      'Gelijke materialen op elkaar gaan bij een dynamische belasting snel vreten: het oppervlak wordt ruw ' +
+      'en de wrijving neemt toe. Deze combinatie is alleen geschikt als de spindel af en toe met de hand ' +
+      'wordt versteld, en dan goed ingevet. Voor een dynamische belasting adviseren wij een bronzen moer; ' +
+      'op een RVS-spindel is die ook bestand tegen een vochtige of corrosieve omgeving.';
   }
 
   // De inschakelduur als bewegingstijd per periode van 10 minuten.
@@ -3517,8 +3544,10 @@ var Rekenkern = (function () {
 
   // Wrijvingscoëfficiënt van de moer, droog en gesmeerd (opgave
   // opdrachtgever). Voor het aandrijfkoppel; de zelfremklasse blijft bij MU.
+  // v1.54 (opdrachtgever 14-10-2026): brons voorlopig zoals KAMMERER,
+  // 0,1 droog en 0,05 gesmeerd (was 0,2 / 0,1 zoals het rekenprogramma).
   var MOER_WRIJVING = {
-    brons: { droog: 0.2, gesmeerd: 0.1 },
+    brons: { droog: 0.1, gesmeerd: 0.05 },
     staal: { droog: 0.15, gesmeerd: 0.1 },
     kunststof: { droog: 0.1, gesmeerd: 0.05 }
   };
@@ -3903,6 +3932,7 @@ var Rekenkern = (function () {
     smeeradvies: smeeradvies,
     GELEIDING_MU: GELEIDING_MU,
     UITLOOP_MM: UITLOOP_MM,
+    uitloopMm: uitloopMm,
     VERSNELLING_STANDAARD_HORIZONTAAL: VERSNELLING_STANDAARD_HORIZONTAAL,
     axialeKrachtUitGewicht: axialeKrachtUitGewicht,
     edPer10Min: edPer10Min,
@@ -3910,6 +3940,7 @@ var Rekenkern = (function () {
     ED_MAX_KUNSTSTOF: ED_MAX_KUNSTSTOF,
     inschakelduurTekst: inschakelduurTekst,
     glijsnelheidMelding: glijsnelheidMelding,
+    gelijkMateriaalMelding: gelijkMateriaalMelding,
     P_MAX_METAAL: P_MAX_METAAL,
     P_MAX_KUNSTSTOF: P_MAX_KUNSTSTOF,
     toelaatbareVlaktedruk: toelaatbareVlaktedruk,
@@ -4304,7 +4335,7 @@ var Advies = (function () {
   function vrijeLengteVoor(invoer, moerMm) {
     var slag = invoer.slagMm;
     if (typeof slag !== 'number' || !Number.isFinite(slag) || slag <= 0) return invoer.overspanningMm;
-    return Math.max(invoer.overspanningMm, slag + moerMm + Rekenkern.UITLOOP_MM);
+    return Math.max(invoer.overspanningMm, slag + moerMm + Rekenkern.uitloopMm(invoer.uitloop));
   }
 
   function kandidaten(type) {
@@ -5902,7 +5933,9 @@ var WizardLogica = (function () {
           // vroegere knikmelding. Alleen bij trapezium; de andere kaarten
           // blijven zoals ze waren.
           grenstoetsen: type === 'trapezium' ? trapeziumGrenstoetsen(c) : undefined,
-          zelfremklasse: c.zelfremklasse || null,
+          // FB-009 (v1.54): ook de kogelomloopkaart zegt dat hij niet
+          // zelfremmend is, zodat een klant die zelfremming zoekt dat ziet.
+          zelfremklasse: c.zelfremklasse || (type === 'kogelomloop' ? 'geen' : null),
           waarschuwingen: kritiek,
           // Spec 2026-10-05-miniatuur-advies-doorverwijzing-ontwerp §2/§3
           // (v1.29): een miniatuurkaart gaat via de product engineers (de ui
@@ -6172,8 +6205,9 @@ var WizardLogica = (function () {
     return {
       nummer: 2,
       titel: 'Uitvoering',
-      toelichting: 'De spindel is altijd RVS; de moer is zelfsmerende kunststof. Welke moer en ' +
-        'welke coating passen, hangt af van speling en rendement.',
+      // FB-008 (v1.54): tekst van de melder.
+      toelichting: 'De leadscrew is altijd RVS; de moer is van hoogwaardig kunststof. De keuze van het ' +
+        'type moer en een eventuele coating op de leadscrew hangt af van de eisen aan speling en rendement.',
       vragen: [
         vraag({
           sleutel: 'spelingsvrij',
@@ -6288,7 +6322,7 @@ var WizardLogica = (function () {
       toelichting: tak === 'trapezium'
         ? 'Bij trapezium hebben moer en spindel elk een eigen materiaal, net als in de bestelcode.'
         : tak === 'draadspindel'
-        ? 'De spindel is altijd RVS en de moer zelfsmerende kunststof; de omgeving bepaalt vooral of ' +
+        ? 'De leadscrew is altijd RVS en de moer van hoogwaardig kunststof; de omgeving bepaalt vooral of ' +
           'coating en werkbereik passen.'
         : 'De omgeving bepaalt het geadviseerde materiaal (staal of RVS) en het type afdichting of coating.',
       vragen: vragen
@@ -6396,6 +6430,19 @@ var WizardLogica = (function () {
       eenheid: 'mm',
       groep: BEWEGING,
       hint: 'Hiermee bepaalt de tool of knik en kritisch toerental een rol spelen.'
+    }));
+    // v1.54 (opdrachtgever 14-10-2026): de 50 mm uitloop is een keuze.
+    vragen.push(vraag({
+      sleutel: 'uitloop',
+      tekst: '50 mm extra slag als uitloop?',
+      groep: BEWEGING,
+      verplicht: false,
+      hint: 'De uitloop geeft de moer ruimte om af te remmen voor hij bij het lager is. Zonder antwoord ' +
+        'rekent de tool met uitloop.',
+      opties: [
+        optie('ja', 'Ja, 50 mm uitloop', 'Standaard: de afstand tussen de lagers wordt slag + moer + 50 mm'),
+        optie('nee', 'Nee, geen uitloop', 'De afstand tussen de lagers wordt slag + moer')
+      ]
     }));
     // Samengestelde vraag: een exact getal (mm/s) is de primaire invoer;
     // de categorieën ernaast zijn een snelkeuze voor wie het getal niet
@@ -6880,7 +6927,7 @@ var WizardLogica = (function () {
 
   function totaalLengte(a, cfg) {
     var o = ontbreekt(a.overspanning) ? 0 : a.overspanning;
-    var s = ontbreekt(a.slag) ? 0 : a.slag + moerLengte(cfg) + Rekenkern.UITLOOP_MM;
+    var s = ontbreekt(a.slag) ? 0 : a.slag + moerLengte(cfg) + Rekenkern.uitloopMm(a.uitloop);
     var tussen = Math.max(o, s) || STANDAARD_TUSSEN_LAGERS;
     return Math.ceil(tussen + astapLengte(cfg, cfg.astap1) + astapLengte(cfg, cfg.astap2));
   }
@@ -6999,6 +7046,8 @@ var WizardLogica = (function () {
       overspanningMm: vrijeLengte(a),
       // FB-007 (v1.44): de configurator toont de slag; leeg blijft leeg.
       slagMm: ontbreekt(a.slag) ? undefined : a.slag,
+      // v1.54: uitloop, onbeantwoord 'ja' (50 mm).
+      uitloop: a.uitloop === 'nee' ? 'nee' : 'ja',
       lagering: (ontbreekt(a.lagering) || a.lagering === 'weetniet') ? 'vast-los' : a.lagering,
       verticaal: nietHorizontaal,
       moermateriaal: ontbreekt(a.moermateriaal) ? 'brons' : a.moermateriaal,
@@ -7085,13 +7134,14 @@ var WizardLogica = (function () {
   var HERKOMST_REDEN = {
     d: 'Maat geadviseerd op basis van de opgegeven belasting en snelheid.',
     P: 'Spoed hoort bij de geadviseerde maat.',
-    lengte: 'Berekend uit de opgegeven slag (plus moerlengte en 50 mm uitloop) of overspanning, plus de astappen.',
+    lengte: 'Berekend uit de opgegeven slag (plus moerlengte en eventueel 50 mm uitloop) of overspanning, plus de astappen.',
     astap1: R_LAGERBLOK, astap2: R_LAGERBLOK,
     voorspanning: R_NAUWKEURIG, klasse: R_NAUWKEURIG,
     materiaal: R_OMGEVING, materiaalMoer: R_OMGEVING, materiaalSpindel: R_OMGEVING,
     krachtN: 'Uw externe kracht plus de kracht uit gewicht, geleiding en versnelling.',
     snelheidMmPerSec: overgenomen('de gevraagde snelheid'),
-    overspanningMm: 'Uw opgegeven overspanning, of de slag plus de moerlengte en 50 mm uitloop (de grootste van de twee).',
+    overspanningMm: 'Uw opgegeven overspanning, of de slag plus de moerlengte en eventueel 50 mm uitloop (de grootste van de twee).',
+    uitloop: overgenomen('de uitloop'),
     slagMm: overgenomen('de slag'),
     lagering: overgenomen('de lagerconfiguratie'),
     moermateriaal: overgenomen('het moermateriaal'),
@@ -7237,6 +7287,12 @@ var WizardLogica = (function () {
         .map(function (o) { return o.waarde; });
       cfg.materiaalSpindel = (rvs ? ['E', 'D', 'B', 'A'] : ['B', 'A', 'D', 'E'])
         .filter(function (c) { return beschikbaar.indexOf(c) !== -1; })[0] || beschikbaar[0];
+      // v1.54 (V3): kiest de wizard een RVS-moer, dan de melding over gelijke
+      // materialen ook in het advies van stap 8.
+      var matMelding = Rekenkern.gelijkMateriaalMelding(cfg.materiaalMoer, cfg.materiaalSpindel);
+      if (matMelding && advies && advies.waarschuwingen) {
+        advies.waarschuwingen.push({ ernst: 'let-op', tekst: matMelding });
+      }
       // Open punt 15 (spec 2026-09-28-moertype-per-maat): zelfde principe
       // als bij kogelomloop hierboven, voor de trapeziummoervolgorde.
       cfg.moertype = ConfiguratorLogica.voorkeursMoer('trapezium', cfg.d, cfg.P);
@@ -7486,7 +7542,7 @@ var Offerte = (function () {
   // Sales moermateriaal, bedrijf, overspanning, snelheid en oriëntatie.
   var TOEPASSING_LABELS = {
     krachtN: 'Axiale kracht', snelheidMmPerSec: 'Gevraagde snelheid',
-    overspanningMm: 'Overspanning tussen lagers', slagMm: 'Slag', lagering: 'Lagerconfiguratie',
+    overspanningMm: 'Overspanning tussen lagers', slagMm: 'Slag', uitloop: 'Uitloop 50 mm', lagering: 'Lagerconfiguratie',
     moermateriaal: 'Moermateriaal (doorrekening)', bedrijf: 'Bedrijf', orientatie: 'Inbouw',
     // Spec 2026-10-05-levensduur-statisch-ontwerp §5 (v1.20), alleen kogelomloop.
     urenPerDag: 'Bedrijfsuren per dag', dagenPerWeek: 'Aantal dagen per week',
@@ -7561,6 +7617,7 @@ var Offerte = (function () {
       hard: 'constant, harde start/stop (f_i 0,4)', variabel: 'sterk variabel (f_i 0,3)',
       schokken: 'schokken en/of trillingen (f_i 0,2)', weetniet: 'weet ik niet (f_i 0,2)' },
     smering: { gesmeerd: 'gesmeerd', droog: 'droog (zonder smering)' },
+    uitloop: { ja: 'ja', nee: 'nee' },
     // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34): met de µ waarmee de
     // tool rekent ('kogelomloop' is hier de geleiding, niet het spindeltype).
     geleiding: { kogelomloop: 'kogelomloopgeleiding of kogelbussen (µ 0,05)', rollen: 'rollengeleiding (µ 0,1)',
@@ -7748,6 +7805,8 @@ var Offerte = (function () {
       }
       var lagerT = vastlagerRegel(grenzen);
       if (lagerT) regels.push(lagerT);
+      // v1.54 (V3).
+      if (grenzen.materiaalMelding) regels.push('Let op: ' + grenzen.materiaalMelding);
     }
     if (grenzen.type !== 'draadspindel' && typeof grenzen.aandrijfkoppel === 'number') {
       regels.push('Aandrijfkoppel: ' + fmt(grenzen.aandrijfkoppel, 2) + ' Nm');
@@ -8875,7 +8934,9 @@ var Afbeeldingen = (function () {
     urenPerDag: 8, dagenPerWeek: 5, wekenPerJaar: 52, jaren: 5, fs: 'onbekend',
     orientatie: 'horizontaal',
     // v1.35: gesmeerd en de veiligste belastingsaart tot de klant kiest.
-    belastingsaart: 'weetniet', smering: 'gesmeerd'
+    belastingsaart: 'weetniet', smering: 'gesmeerd',
+    // v1.54: 50 mm uitloop standaard aan.
+    uitloop: 'ja'
   };
 
   // { veldnaam: reden }, uit WizardLogica (die beslist, dit blok leest
@@ -8931,7 +8992,8 @@ var Afbeeldingen = (function () {
     belastingsaart: { gecontroleerd: 'Constant, gecontroleerde start/stop (f_i 0,75)',
       hard: 'Constant, harde start/stop (f_i 0,4)', variabel: 'Sterk variabel (f_i 0,3)',
       schokken: 'Schokken en/of trillingen (f_i 0,2)', weetniet: 'Weet ik niet (f_i 0,2)' },
-    smering: { gesmeerd: 'Gesmeerd', droog: 'Droog (zonder smering)' }
+    smering: { gesmeerd: 'Gesmeerd', droog: 'Droog (zonder smering)' },
+    uitloop: { ja: 'Ja, 50 mm extra slag', nee: 'Nee, geen uitloop' }
   };
 
 
@@ -9811,6 +9873,8 @@ var Afbeeldingen = (function () {
     // v1.53: let-op boven 1,5 m/s.
     var vgMelding = Rekenkern.glijsnelheidMelding(r.glijsnelheid);
     if (vgMelding) inhoud.appendChild(toelichting(vgMelding));
+    // v1.54 (V3): RVS-moer op RVS of staal.
+    if (r.materiaalMelding) inhoud.appendChild(toelichting(r.materiaalMelding));
     // v1.52: met een bewegingsprofiel een echte toets.
     if (typeof r.edWerkelijk === 'number') {
       inhoud.appendChild(regelMetIcoon('Inschakelduur volgens het bewegingsprofiel: ' + fmt(r.edWerkelijk, 0) +
@@ -10128,7 +10192,7 @@ var Afbeeldingen = (function () {
     var nieuw;
     try {
       nieuw = String(ConfiguratorLogica.lengteUitSlag(
-        ConfiguratorLogica.normaliseer(lezenRuweConfig()), slag));
+        ConfiguratorLogica.normaliseer(lezenRuweConfig()), slag, uitloopKeuze()));
     } catch (fout) {
       return;
     }
@@ -10139,10 +10203,17 @@ var Afbeeldingen = (function () {
     overspanningVolgtLengte();
   }
 
+  // v1.54: de uitloopkeuze uit het rekenpaneel ('ja' als het veld ontbreekt).
+  function uitloopKeuze() {
+    var el = document.getElementById('belasting-uitloop');
+    return el && el.value === 'nee' ? 'nee' : 'ja';
+  }
+
   function werkSlagMeldingBij(cfg, belasting) {
     var el = document.getElementById('slagMelding');
     if (!el) return;
-    var tekst = belasting ? ConfiguratorLogica.slagMelding(cfg, belasting.slagMm, belasting.overspanningMm) : null;
+    var tekst = belasting ? ConfiguratorLogica.slagMelding(cfg, belasting.slagMm, belasting.overspanningMm,
+      belasting.uitloop) : null;
     el.textContent = tekst || '';
     el.hidden = !tekst;
   }
@@ -10296,6 +10367,8 @@ var Afbeeldingen = (function () {
         codeEl.value = ConfiguratorLogica.materiaalMoerVoorMoermateriaal(e.target.value, codeEl.value);
       }
     }
+    // v1.54: een andere uitloopkeuze verandert de lengte uit de slag.
+    if (e.target.id === 'belasting-uitloop') lengteVolgtSlag();
     bijwerken();
   });
   belastingContainer.addEventListener('input', function (e) {
