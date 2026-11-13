@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.55  13-11-2026  Bewegingsprofiel volgt de antwoorden van stap 4 (snelheid, slag, kracht) zolang de fasen niet met de hand zijn aangepast, anders een melding; ook in de configurator een melding als profiel en velden verschillen; tabel stap 1: prijs kogelomloop "standaard", slijtage trapezium evenredig met belasting en inschakelduur
   1.54  14-10-2026  50 mm uitloop als keuze (wizard en configurator); melding bij een RVS-moer op RVS of staal; kerndiameter RSCR gelijk aan FSCR; µ brons 0,1/0,05 zoals Kammerer; FB-008 tekst lead screw stap 2; FB-009 kogelomloopkaart toont "Zelfremming: geen"
   1.53  13-10-2026  Besluiten controle (2): f_w volgt ook de trillingen (minstens 3,0 bij trillingen of weet ik niet); kerndiameter per moer FSCR/FSCL/FDCR; kritisch toerental trapezium op d3; trapezium nooit aanbevolen bij continu bedrijf; let-op boven 1,5 m/s glijsnelheid; bewegingsprofiel in de adviesaanvraag
   1.52  13-10-2026  Bewegingsprofiel als geavanceerde optie (wizard en configurator): levensduur met gemiddelde last en snelheid, inschakelduur trapezium als toets, fasen in de offerte
@@ -458,7 +459,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.54 · 14-10-2026</div>
+    <div class="versie" id="toolVersie">v1.55 · 13-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3679,6 +3680,24 @@ var Rekenkern = (function () {
     };
   }
 
+  // v1.55 (feedback 06-11-2026): het advies rekent met het profiel, niet met
+  // de opgegeven snelheid en kracht. Wijken die meer dan 1 % af, dan een
+  // melding. sv: profielSamenvatting; vMmS en krachtN: wat de klant elders
+  // opgaf (krachtN mag ontbreken).
+  function profielAfwijking(sv, vMmS, krachtN) {
+    if (!sv) return null;
+    var wijkt = function (x, y) { return typeof y === 'number' && y > 0 && Math.abs(x - y) > 0.01 * y; };
+    var vAnders = wijkt(sv.snelheidMaxMmS, vMmS), fAnders = wijkt(sv.krachtMaxN, krachtN);
+    if (!vAnders && !fAnders) return null;
+    var delen = [];
+    if (vAnders) delen.push('een hoogste snelheid van ' + nlGetal(sv.snelheidMaxMmS, 0) + ' mm/s (opgegeven: ' +
+      nlGetal(vMmS, 0) + ' mm/s)');
+    if (fAnders) delen.push('een hoogste kracht van ' + nlGetal(sv.krachtMaxN, 0) + ' N (opgegeven: ' +
+      nlGetal(krachtN, 0) + ' N)');
+    return 'Het bewegingsprofiel rekent met ' + delen.join(' en ') + '. De berekening volgt het profiel. ' +
+      'Pas het profiel aan, of vul het opnieuw in met "Vul in uit slag, snelheid en versnelling".';
+  }
+
   // Levensduur in uren met de gemiddelde last en het gemiddelde toerental.
   function levensduurUitProfiel(cDynKN, profiel, fw, P) {
     var F = Math.max(profiel.krachtGemN, 1); // geen deling door 0 bij een onbelast profiel
@@ -3917,6 +3936,7 @@ var Rekenkern = (function () {
     profielSamenvatting: profielSamenvatting,
     levensduurUitProfiel: levensduurUitProfiel,
     profielVoorstel: profielVoorstel,
+    profielAfwijking: profielAfwijking,
     levensduurUren: levensduurUren,
     levensduurTekst: levensduurTekst,
     statischOk: statischOk,
@@ -5830,7 +5850,8 @@ var WizardLogica = (function () {
   //   motorvermogenKW, grenstoetsen, kerntoets: { label, tekst, ok }, prijs, aanbevolen,
   //   reden, viaEngineering }]; reden is leeg behalve bij de ene aanbevolen optie.
   var PASSEND_TYPEN = ['kogelomloop', 'trapezium', 'draadspindel'];
-  var PASSEND_PRIJS = { kogelomloop: 'hoger', trapezium: 'voordeliger', draadspindel: 'voordelig' };
+  // v1.55 (feedback 06-11-2026): kogelomloop is de standaard, niet "hoger".
+  var PASSEND_PRIJS = { kogelomloop: 'standaard', trapezium: 'voordeliger', draadspindel: 'voordelig' };
   var REDEN_EIGEN_TYPE = 'U koos dit type en het past bij uw toepassing.';
   var REDEN_KOGELOMLOOP = 'Hoog rendement en lange levensduur, geschikt voor continu bedrijf.';
   var REDEN_ANDER_TYPE = 'Het gekozen type past niet bij deze toepassing; dit is het eerste passende type.';
@@ -6106,9 +6127,10 @@ var WizardLogica = (function () {
             trapezium: 'vaak (statisch) zelfremmend; nooit gebruiken als veiligheidsvoorziening',
             draadspindel: 'alleen bij kleine spoed, droog en zonder trilling; nooit gebruiken als veiligheidsvoorziening' },
           { label: 'Geluid en slijtage', kogelomloop: 'rollend contact, stil, weinig slijtage',
-            trapezium: 'glijdend contact, meer geluid en slijtage bij continu bedrijf',
+            // v1.55 (feedback 06-11-2026).
+            trapezium: 'glijdend contact, slijtage evenredig met de belasting en de inschakelduur',
             draadspindel: 'glijdend contact met een zelfsmerende kunststof moer, stil' },
-          { label: 'Prijsindicatie', kogelomloop: 'hoger', trapezium: 'voordeliger',
+          { label: 'Prijsindicatie', kogelomloop: 'standaard', trapezium: 'voordeliger',
             draadspindel: 'voordelig' },
           { label: 'Typische toepassing',
             kogelomloop: 'hoge snelheid en nauwkeurigheid: CNC, meetopstellingen',
@@ -7042,7 +7064,8 @@ var WizardLogica = (function () {
         : a.snelheidMmS,
       krachtN: kracht,
       // v1.37 (FB-002): meldingen over beweging en kracht, Advies.kies() toont ze.
-      bewegingMeldingen: controle.meldingen,
+      // v1.55: ook als het profiel niet meer bij stap 4 past.
+      bewegingMeldingen: controle.meldingen.concat(profielMelding(a) ? [profielMelding(a)] : []),
       overspanningMm: vrijeLengte(a),
       // FB-007 (v1.44): de configurator toont de slag; leeg blijft leeg.
       slagMm: ontbreekt(a.slag) ? undefined : a.slag,
@@ -7084,10 +7107,50 @@ var WizardLogica = (function () {
   // vlaktedruk rekenen met de zwaarste fase (hoogste kracht en snelheid).
   function profielInvoer(a) {
     if (!a.profielAan) return {};
-    var samenvatting = Rekenkern.profielSamenvatting(a.profiel);
+    var samenvatting = Rekenkern.profielSamenvatting(actueelProfiel(a).profiel);
     if (!samenvatting) return {};
     return { profiel: samenvatting.fasen, krachtN: samenvatting.krachtMaxN,
       snelheidMmPerSec: samenvatting.snelheidMaxMmS };
+  }
+
+  // v1.55 (feedback 06-11-2026): na "Vul in" onthoudt de wizard de bewegende
+  // fasen van dat voorstel (a.profielBron). Zolang de klant die fasen niet
+  // zelf aanpast, volgen ze de antwoorden van stap 4; pauzes (snelheid 0 of
+  // leeg) blijven staan. Zo ging een snelheid van 25 → 125 mm/s niet verloren.
+  // Geeft { profiel, profielBron, bijgewerkt }.
+  function bewegendeFasen(rijen) {
+    return (Array.isArray(rijen) ? rijen : []).filter(function (r) { return Number(r.snelheidMmS) > 0; });
+  }
+  function zelfdeFasen(x, y) {
+    var kort = function (rijen) {
+      return JSON.stringify(rijen.map(function (r) { return [r.fase, r.krachtN, r.snelheidMmS, r.duurS]; }));
+    };
+    return kort(x) === kort(y);
+  }
+  function actueelProfiel(a) {
+    var rijen = Array.isArray(a.profiel) ? a.profiel : [];
+    var zo = { profiel: rijen, profielBron: a.profielBron, bijgewerkt: false };
+    if (!a.profielAan || !Array.isArray(a.profielBron)) return zo;
+    if (!zelfdeFasen(bewegendeFasen(rijen), a.profielBron)) return zo;
+    var voorstel = profielVoorstelUitAntwoorden(a);
+    if (!voorstel) return zo;
+    var nieuw = bewegendeFasen(voorstel);
+    if (zelfdeFasen(nieuw, a.profielBron)) return zo;
+    var rust = rijen.filter(function (r) { return !(Number(r.snelheidMmS) > 0); });
+    return {
+      profiel: nieuw.concat(rust.length ? rust : voorstel.filter(function (r) { return !(r.snelheidMmS > 0); })),
+      profielBron: nieuw.map(function (r) { return Object.assign({}, r); }),
+      bijgewerkt: true
+    };
+  }
+
+  // Melding als het (zelf aangepaste) profiel niet meer past bij stap 4.
+  function profielMelding(a) {
+    if (!a.profielAan) return null;
+    var sv = Rekenkern.profielSamenvatting(actueelProfiel(a).profiel);
+    var voorstel = Rekenkern.profielSamenvatting(profielVoorstelUitAntwoorden(a));
+    if (!sv || !voorstel) return null;
+    return Rekenkern.profielAfwijking(sv, voorstel.snelheidMaxMmS, voorstel.krachtMaxN);
   }
 
   // Het voorstel voor de fasen uit de antwoorden van stap 4.
@@ -7447,6 +7510,9 @@ var WizardLogica = (function () {
     bewegingsControle: bewegingsControle,
     smeringMelding: smeringMelding,
     profielVoorstelUitAntwoorden: profielVoorstelUitAntwoorden,
+    actueelProfiel: actueelProfiel,
+    profielMelding: profielMelding,
+    bewegendeFasen: bewegendeFasen,
     precisieMelding: precisieMelding,
     smeringOntbreekt: smeringOntbreekt,
     STAP8_MINIATUUR_TOELICHTING: STAP8_MINIATUUR_TOELICHTING,
@@ -9606,6 +9672,24 @@ var Afbeeldingen = (function () {
       },
       opWijziging: function (aan, rijen) { configuratorProfiel = { aan: aan, rijen: rijen }; bijwerken(); }
     }));
+    // v1.55: melding als het profiel een andere snelheid of kracht heeft dan de velden.
+    var profielMelding = document.createElement('p');
+    profielMelding.className = 'melding kritiek';
+    profielMelding.style.marginTop = '6px';
+    profielMelding.id = 'configProfielMelding';
+    profielMelding.hidden = true;
+    belastingContainer.appendChild(profielMelding);
+  }
+
+  function werkProfielMeldingBij(belasting) {
+    var el = document.getElementById('configProfielMelding');
+    if (!el) return;
+    var tekst = belasting && belasting.profiel
+      ? Rekenkern.profielAfwijking(Rekenkern.profielSamenvatting(belasting.profiel),
+        belasting.snelheidMmPerSec, belasting.krachtN)
+      : null;
+    el.textContent = tekst || '';
+    el.hidden = !tekst;
   }
 
   // ── Uitlezen ────────────────────────────────────────────────────────
@@ -10117,6 +10201,7 @@ var Afbeeldingen = (function () {
     }
     huidigeBelasting = belasting;
     werkSlagMeldingBij(cfg, belasting);
+    werkProfielMeldingBij(belasting);
     var doorgerekend = toonGrenzenEnKoppel(cfg, belasting);
     toonRemWaarschuwing(doorgerekend);
   }
@@ -11767,6 +11852,16 @@ var Afbeeldingen = (function () {
     WizardLogica.bewegingsControle(wizAntwoordenVoorAdvies()).meldingen.forEach(function (tekst) {
       vak.appendChild(wizAlert(tekst, null));
     });
+    // v1.55: volgt het profiel de nieuwe antwoorden, dan de tabel opnieuw
+    // tekenen; past een met de hand aangepast profiel niet meer, een melding.
+    var editor = document.getElementById('wizProfiel');
+    if (editor && wizProfielVolgt()) editor.parentNode.replaceChild(wizProfielEditor(), editor);
+    var profielVak = document.getElementById('wizProfielMelding');
+    if (profielVak) {
+      profielVak.innerHTML = ''; // wist de container; geen data hierin
+      var pm = WizardLogica.profielMelding(wizAntwoordenVoorAdvies());
+      if (pm) profielVak.appendChild(wizAlert(pm, null));
+    }
   }
 
   function wizGoTo(index) {
@@ -11776,9 +11871,38 @@ var Afbeeldingen = (function () {
   }
 
   // ── Eén stap tekenen ─────────────────────────────────────────────────
+  // v1.55: het profiel volgt stap 4 zolang de bewegende fasen niet met de
+  // hand zijn aangepast (WizardLogica.actueelProfiel).
+  function wizProfielVolgt() {
+    var actueel = WizardLogica.actueelProfiel(wizAntwoordenVoorAdvies());
+    if (!actueel.bijgewerkt) return false;
+    wizAntwoorden.profiel = actueel.profiel;
+    wizAntwoorden.profielBron = actueel.profielBron;
+    return true;
+  }
+
+  function wizProfielEditor() {
+    return bouwProfielEditor({
+      id: 'wizProfiel', aan: wizAntwoorden.profielAan, rijen: wizAntwoorden.profiel,
+      vulIn: function () {
+        var voorstel = WizardLogica.profielVoorstelUitAntwoorden(wizAntwoordenVoorAdvies());
+        if (voorstel) {
+          wizAntwoorden.profielBron = WizardLogica.bewegendeFasen(voorstel)
+            .map(function (r) { return Object.assign({}, r); });
+        }
+        return voorstel;
+      },
+      opWijziging: function (aan, rijen) {
+        wizAntwoorden.profielAan = aan; wizAntwoorden.profiel = rijen;
+        wizWerkBewegingMeldingBij();
+      }
+    });
+  }
+
   function wizRenderStap() {
     var stappen = wizStappen();
     var stap = stappen[wizStapIndex];
+    wizProfielVolgt();
 
     wizStepNumEl.textContent = stap.nummer;
     var wizStepTotaalEl = document.getElementById('wizStepTotaal');
@@ -11852,11 +11976,12 @@ var Afbeeldingen = (function () {
       bewegingMelding.setAttribute('aria-live', 'polite');
       wizContainer.appendChild(bewegingMelding);
       // v1.52: het bewegingsprofiel als geavanceerde optie onder de beweging.
-      wizContainer.appendChild(bouwProfielEditor({
-        id: 'wizProfiel', aan: wizAntwoorden.profielAan, rijen: wizAntwoorden.profiel,
-        vulIn: function () { return WizardLogica.profielVoorstelUitAntwoorden(wizAntwoordenVoorAdvies()); },
-        opWijziging: function (aan, rijen) { wizAntwoorden.profielAan = aan; wizAntwoorden.profiel = rijen; }
-      }));
+      wizContainer.appendChild(wizProfielEditor());
+      var profielMeldingVak = document.createElement('div');
+      profielMeldingVak.id = 'wizProfielMelding';
+      profielMeldingVak.setAttribute('aria-live', 'polite');
+      wizContainer.appendChild(profielMeldingVak);
+      wizWerkBewegingMeldingBij();
     }
 
     if (stap.nummer === stappen.length) {
