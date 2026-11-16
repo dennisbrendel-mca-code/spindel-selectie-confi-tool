@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.58  16-11-2026  Besluiten 16-11: corrosief trapezium bronzen moer op RVS (voeding RVS-moer met let-op over lood); snelheid altijd als getal, categorieën vervallen; stappenmotor hoogstens 1.000 /min; f_s zonder trillingen 2,5 (was 1,3)
   1.57  16-11-2026  f_w bij "weet ik niet" 1,5 (was 3,0); trillingen en schokken apart; eigen f_w invullen (wizard en configurator) met legenda; bevestigknop bij de snelheid in stap 4
   1.56  16-11-2026  FB-009: vraag "Moet de spindel zelfremmend zijn?" (stap Inbouw); bij ja vervalt de kogelomloopspindel
   1.55  13-11-2026  Bewegingsprofiel volgt de antwoorden van stap 4 (snelheid, slag, kracht) zolang de fasen niet met de hand zijn aangepast, anders een melding; ook in de configurator een melding als profiel en velden verschillen; tabel stap 1: prijs kogelomloop "standaard", slijtage trapezium evenredig met belasting en inschakelduur
@@ -468,7 +469,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.57 · 16-11-2026</div>
+    <div class="versie" id="toolVersie">v1.58 · 16-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3323,7 +3324,9 @@ var Rekenkern = (function () {
   // aanname bij "weet ik niet" de overdracht van wizard naar configurator en
   // offerte. 'geen' → 1,3 · 'trillingen' → 3,0 · 'onbekend' → 3,0 met de
   // aannamemelding. statischeVeiligheid() hieronder is de enige vertaling.
-  var STATISCHE_VEILIGHEID = { geen: 1.3, trillingen: 3.0, onbekend: 3.0 };
+  // v1.58 (opdrachtgever 16-11-2026): ondergrens 2,5 zonder trillingen (was 1,3),
+  // gelijk aan het rekenprogramma van MCA.
+  var STATISCHE_VEILIGHEID = { geen: 2.5, trillingen: 3.0, onbekend: 3.0 };
   var FS_KEUZES = ['geen', 'trillingen', 'onbekend'];
   var FS_AANNAME_MELDING =
     'De statische veiligheidsfactor is aangenomen op 3,0; MCA stemt de juiste waarde met u af.';
@@ -3629,6 +3632,13 @@ var Rekenkern = (function () {
   // heeft, kiest dat en krijgt 3,0. Een klant die f_w precies weet, vult hem
   // zelf in (FW_GRENZEN); die waarde geldt dan zoals opgegeven.
   var FW_TRILLINGEN = 3.0;
+  // v1.58 (opdrachtgever 16-11-2026): een stappenmotor verliest boven circa
+  // 1.000 /min snel koppel. Bij een stappenmotor kiest het advies daarom
+  // alleen maten waarbij de spindel hoogstens zo snel draait.
+  var STAPPENMOTOR_N_MAX = 1000;
+  function motorToerentalGrens(motor) {
+    return motor === 'stappen' ? STAPPENMOTOR_N_MAX : null;
+  }
   var FW_ONBEKEND = 1.5;
   var FW_GRENZEN = { min: 1.0, max: 3.5 };
   // Legenda bij de vraag en het invulveld: [omschrijving, f_w].
@@ -3980,6 +3990,8 @@ var Rekenkern = (function () {
     FS_AANNAME_MELDING: FS_AANNAME_MELDING,
     belastingsfactor: belastingsfactor,
     belastingsfactorBron: belastingsfactorBron,
+    STAPPENMOTOR_N_MAX: STAPPENMOTOR_N_MAX,
+    motorToerentalGrens: motorToerentalGrens,
     eigenFw: eigenFw,
     FW_ONBEKEND: FW_ONBEKEND,
     FW_GRENZEN: FW_GRENZEN,
@@ -4262,6 +4274,7 @@ var Advies = (function () {
     }
     Rekenkern.statischeVeiligheid(invoer.fs);
     Rekenkern.eigenFw(invoer.fwEigen);
+    valideerOptioneel(invoer.motor, 'motor', ['servo', 'stappen', 'onbekend']);
     if (invoer.type === 'draadspindel') {
       valideerOptioneel(invoer.spelingsvrij, 'spelingsvrij', ['ja', 'nee', 'weetniet']);
       valideerOptioneel(invoer.coating, 'coating', ['T', 'U']);
@@ -4285,6 +4298,15 @@ var Advies = (function () {
   // dan is een snelheidsadvies misleidend, want geen enkele maat zou ooit passen.
   // v1.35: de glijsnelheidsgrens volgt per maat uit de vlaktedruk (de hoogste
   // tabelsnelheid waarbij p nog toelaatbaar is, Rekenkern.maxGlijsnelheid).
+  // v1.58: uitleg bij de toerentalgrens van een stappenmotor, met het
+  // toerental van het advies als dat bekend is.
+  function stappenmotorTekst(n) {
+    return 'Met een stappenmotor kiest de tool een maat waarbij de spindel hoogstens ' +
+      String(Rekenkern.STAPPENMOTOR_N_MAX).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' /min draait' +
+      (typeof n === 'number' ? ' (dit advies: ' + Math.round(n) + ' /min)' : '') +
+      '; daarboven verliest een stappenmotor snel koppel. Een servomotor laat een hoger toerental toe.';
+  }
+
   function hoogsteHaalbareTrapeziumSnelheid(lijst, invoer) {
     var beste = null;
     lijst.forEach(function (m) {
@@ -4298,6 +4320,8 @@ var Advies = (function () {
       if (vgMax <= 0) return;
       var nCrMax = Rekenkern.kritischToerentalTrapezium(m.d3, L, invoer.lagering).nCrMax;
       var vMax = Math.min((vgMax * 1000 * m.P) / (m.d2 * Math.PI), (nCrMax * m.P) / 60);
+      var nMotorT = Rekenkern.motorToerentalGrens(invoer.motor);
+      if (nMotorT !== null) vMax = Math.min(vMax, (nMotorT * m.P) / 60);
       if (!beste || vMax > beste.vMaxMmPerSec) {
         beste = { maat: m, vMaxMmPerSec: vMax };
       }
@@ -4471,7 +4495,9 @@ var Advies = (function () {
   function zoekDraadspindel(invoer, coating) {
     var maten = Catalogus.draadspindel.maten.slice().sort(function (a, b) { return a.d - b.d || a.P - b.P; });
     var moeren = draadspindelMoerKeuzes(invoer.spelingsvrij);
+    var nMotor = Rekenkern.motorToerentalGrens(invoer.motor);
     for (var i = 0; i < maten.length; i++) {
+      if (nMotor !== null && Rekenkern.benodigdToerental(invoer.snelheidMmPerSec, maten[i].P) > nMotor) continue;
       for (var j = 0; j < moeren.length; j++) {
         var m = maten[i];
         var toets = Rekenkern.draadspindelToets({
@@ -4512,11 +4538,17 @@ var Advies = (function () {
     if (!gevonden) {
       waarschuwingen.push({
         ernst: 'kritiek',
-        tekst: invoer.temperatuur === 'buiten' ? DS_TEMPERATUUR_TEKST : DS_GEEN_MAAT_TEKST
+        tekst: (invoer.temperatuur === 'buiten' ? DS_TEMPERATUUR_TEKST : DS_GEEN_MAAT_TEKST) +
+          (invoer.temperatuur !== 'buiten' && Rekenkern.motorToerentalGrens(invoer.motor) !== null
+            ? ' ' + stappenmotorTekst() : '')
       });
       return { maat: null, berekend: null, waarschuwingen: waarschuwingen, hoogsteHaalbareSnelheid: null };
     }
     waarschuwingen.push({ ernst: 'info', tekst: Rekenkern.DS_INDICATIEF_MELDING });
+    if (Rekenkern.motorToerentalGrens(invoer.motor) !== null) {
+      waarschuwingen.push({ ernst: 'info',
+        tekst: stappenmotorTekst(Rekenkern.benodigdToerental(invoer.snelheidMmPerSec, gevonden.maat.P)) });
+    }
     return { maat: gevonden.maat, berekend: gevonden.berekend, waarschuwingen: waarschuwingen };
   }
 
@@ -4549,11 +4581,15 @@ var Advies = (function () {
     // levensduur, de statische toets of de d·n-grens? Dan zegt de
     // geen-maatmelding welke (spec 2026-10-05-levensduur-statisch-ontwerp §5).
     var afgevallenOpMoer = null;
+    // v1.58: bij een stappenmotor hoogstens 1.000 /min.
+    var nMotor = Rekenkern.motorToerentalGrens(invoer.motor);
+    var afgevallenOpMotor = false;
 
     for (var i = 0; i < lijst.length; i++) {
       var m = lijst[i];
       var n = Rekenkern.benodigdToerental(invoer.snelheidMmPerSec, m.P);
       var uitkomst = { n: n };
+      if (nMotor !== null && n > nMotor) { afgevallenOpMotor = true; continue; }
 
       if (invoer.type === 'kogelomloop') {
         // Moer volgens spec 2026-10-05-levensduur-statisch-ontwerp §3: een
@@ -4668,6 +4704,7 @@ var Advies = (function () {
         : 'Geen enkele doorgerekende maat haalt deze combinatie. ' +
           'Kies een stijvere lagerconfiguratie, verklein de overspanning, ' +
           'of kies een grotere spoed zodat het toerental omlaag kan.' + dekking;
+      if (afgevallenOpMotor) geenMaatTekst += ' ' + stappenmotorTekst();
       var hoogsteHaalbareSnelheid = null;
 
       // Trapezium valt vaak af op glijsnelheid; bij lange overspanning ook op knik (zie
@@ -4684,7 +4721,8 @@ var Advies = (function () {
           geenMaatTekst = 'Met deze belasting is met een trapeziumspindel maximaal ' +
             vMaxAfgerondMs.toFixed(2).replace('.', ',') + ' m/s haalbaar, ' +
             'met maat ' + hoogsteHaalbareSnelheid.maat.code + '. Kies een lagere snelheid, een andere ' +
-            'lagerconfiguratie, of overweeg een kogelomloopspindel voor de gevraagde snelheid.' + dekking;
+            'lagerconfiguratie, of overweeg een kogelomloopspindel voor de gevraagde snelheid.' + dekking +
+            (nMotor !== null ? ' ' + stappenmotorTekst() : '');
         }
       }
 
@@ -4704,6 +4742,10 @@ var Advies = (function () {
     var viaEngineering = invoer.type === 'kogelomloop' && Catalogus.isMiniatuurmaat(gekozen.d, gekozen.P);
     if (viaEngineering) {
       waarschuwingen.push({ ernst: 'info', tekst: MINIATUUR_DOORVERWIJZING });
+    }
+
+    if (nMotor !== null) {
+      waarschuwingen.push({ ernst: 'info', tekst: stappenmotorTekst(berekend.n) });
     }
 
     if (gekozen.status === 'aanvraag') {
@@ -6357,7 +6399,7 @@ var WizardLogica = (function () {
         optie('voeding', 'Voeding en farma', 'Spindel en moer in RVS 316 (E)'),
         optie('cleanroom', 'Cleanroom', 'Spindel C35/C45 of RVS, cleanroom-vet, lage deeltjesemissie'),
         optie('vochtig', 'Vochtig, stoffig, buiten', 'Spindel met coating, balg en dubbele afdichting'),
-        optie('corrosief', 'Corrosief', 'Spindel en moer in RVS 316 (E), verzegelde afdichting'),
+        optie('corrosief', 'Corrosief', 'Spindel in RVS 316 (E) met bronzen moer (A), verzegelde afdichting'),
         optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren (standaard: C35/C45 met brons)')
       ];
     }
@@ -6553,14 +6595,12 @@ var WizardLogica = (function () {
       tekst: 'Gewenste snelheid',
       type: 'snelheid',
       eenheid: 'mm/s',
-      hint: 'Vul een exact getal in mm/s in, of kies hieronder een indicatieve categorie.',
-      opties: [
-        optie('zeerlangzaam', 'Zeer langzaam', 'Tot 0,1 m/s'),
-        optie('langzaam', 'Langzaam', '< 0,25 m/s'),
-        optie('gemiddeld', 'Gemiddeld', '0,25 – 1 m/s'),
-        optie('snel', 'Snel', '1 – 2 m/s'),
-        optie('zeersnel', 'Zeer snel', '> 2 m/s')
-      ]
+      // v1.58 (opdrachtgever 16-11-2026): de snelheid is essentieel voor het
+      // advies. Altijd een getal; de indicatieve categorieën zijn vervallen,
+      // zonder getal geen "Volgende".
+      hint: 'Vul de snelheid in mm/s in; zonder snelheid kan de tool geen advies geven. ' +
+        'Ter oriëntatie: 0,1 m/s = 100 mm/s, 1 m/s = 1.000 mm/s.',
+      opties: []
     }));
     vragen.push(vraag({
       sleutel: 'versnelling',
@@ -6637,7 +6677,7 @@ var WizardLogica = (function () {
         verplicht: false,
         // v1.57: trillingen en schokken apart; "weet ik niet" rekent f_w 1,5.
         opties: [
-          optie('nee', 'Nee', 'Belastingsfactor f_w volgens de snelheid · statische veiligheid f_s 1,3'),
+          optie('nee', 'Nee', 'Belastingsfactor f_w volgens de snelheid · statische veiligheid f_s 2,5'),
           optie('trillingen', 'Alleen trillingen', 'f_w minstens 3,0 · f_s 3,0'),
           optie('schokken', 'Alleen schokken', 'f_w minstens 3,0 · f_s 3,0'),
           optie('beide', 'Trillingen én schokken', 'f_w minstens 3,0 · f_s 3,0'),
@@ -7195,6 +7235,8 @@ var WizardLogica = (function () {
       fs: fsKeuze,
       // v1.57: eigen f_w van de klant, leeg = automatisch.
       fwEigen: ontbreekt(a.fwEigen) ? undefined : a.fwEigen,
+      // v1.58: het motortype, voor de toerentalgrens bij een stappenmotor.
+      motor: a.aandrijving === 'hand' || ['servo', 'stappen', 'onbekend'].indexOf(a.motor) === -1 ? undefined : a.motor,
       // Alleen de draadspindeltak van Advies.kies() leest deze drie; de
       // andere takken negeren ze.
       spelingsvrij: a.spelingsvrij,
@@ -7374,6 +7416,8 @@ var WizardLogica = (function () {
   // (lagering) nog niet heeft ingevuld. Het ui-blok vangt die fout op en
   // wijst terug naar de ontbrekende stap, in plaats van hem hier stil te
   // slikken: zie de globale randvoorwaarde over invoervalidatie.
+  var VOEDING_MOER_MELDING = 'Bij voeding en farma: de standaard bronzen moer (CuSn7ZnPb) bevat lood. ' +
+    'MCA stemt met u af welke moer past, bijvoorbeeld een loodvrije bronzen moer of een kunststof moer.';
   function naarConfiguratie(a) {
     var invoer = naarAdviesInvoer(a, a.type);
     // v1.41: zonder kracht én zonder gewicht zag de klant de technische
@@ -7449,7 +7493,11 @@ var WizardLogica = (function () {
       // B4 — koos de klant in stap 3 een kunststofmoer, dan hoort daar de
       // bestelcodeletter C bij en niet stilzwijgend brons.
       var rvs = a.omgeving === 'voeding' || a.omgeving === 'corrosief';
-      cfg.materiaalMoer = a.moermateriaal === 'kunststof' ? 'C' : (rvs ? 'E' : 'A');
+      // v1.58 (opdrachtgever 16-11-2026): bij corrosief een bronzen moer op de
+      // RVS-spindel (brons op RVS is geschikt voor dynamische belasting). Bij
+      // voeding en farma blijft de RVS-moer, met de melding hieronder: de
+      // standaard bronzen moer bevat lood en vraagt overleg.
+      cfg.materiaalMoer = a.moermateriaal === 'kunststof' ? 'C' : (a.omgeving === 'voeding' ? 'E' : 'A');
       // B2 — niet elke maat bestaat in elke uitvoering (Tr 14×3 kent geen
       // RVS). Kies de eerste voorkeur die bij déze maat ook echt bestaat.
       var beschikbaar = ConfiguratorLogica.materiaalSpindelVoor(cfg.d, cfg.P)
@@ -7461,6 +7509,8 @@ var WizardLogica = (function () {
       var matMelding = Rekenkern.gelijkMateriaalMelding(cfg.materiaalMoer, cfg.materiaalSpindel);
       if (matMelding && advies && advies.waarschuwingen) {
         advies.waarschuwingen.push({ ernst: 'let-op', tekst: matMelding });
+        // v1.58: bij voeding en farma is de standaard bronzen moer geen vanzelfsprekend alternatief.
+        if (a.omgeving === 'voeding') advies.waarschuwingen.push({ ernst: 'let-op', tekst: VOEDING_MOER_MELDING });
       }
       // Open punt 15 (spec 2026-09-28-moertype-per-maat): zelfde principe
       // als bij kogelomloop hierboven, voor de trapeziummoervolgorde.
@@ -7786,7 +7836,7 @@ var Offerte = (function () {
   // Eén opbouw voor de twee extra secties hierboven: kop, dan elk gevuld veld.
   var WAARDEN_PER_VRAAG = {
     // f_s-keuze van het rekenpaneel (zelfde teksten als de keuzelijst in de ui).
-    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen en/of schokken (3,0)',
+    fs: { geen: 'Geen trillingen of schokken (2,5)', trillingen: 'Trillingen en/of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
     // v1.57: het antwoord op de trillingenvraag van de wizard.
     trillingen: { nee: 'nee', ja: 'ja', trillingen: 'alleen trillingen', schokken: 'alleen schokken',
@@ -9165,7 +9215,7 @@ var Afbeeldingen = (function () {
   var BEDRIJFSUREN_VELDEN = ['urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren'];
 
   var BELASTING_OPTIE_LABELS = {
-    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen en/of schokken (3,0)',
+    fs: { geen: 'Geen trillingen of schokken (2,5)', trillingen: 'Trillingen en/of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
     moermateriaal: { brons: 'Brons', kunststof: 'Kunststof' },
     bedrijf: { incidenteel: 'Incidenteel', regelmatig: 'Regelmatig', continu: 'Continu' },
@@ -10948,7 +10998,9 @@ var Afbeeldingen = (function () {
     // hieronder): een exact getal (snelheidMmS) of een categorie (snelheid).
     // Onbeantwoord is dus pas waar als GEEN van beide gezet is.
     if (vraag.type === 'snelheid') {
-      return !wizAntwoorden.snelheidMmS && wizAntwoorden.snelheid === undefined;
+      // v1.58: alleen een getal groter dan 0 telt; een categorie niet meer.
+      var v = wizAntwoorden.snelheidMmS;
+      return !(typeof v === 'number' && Number.isFinite(v) && v > 0);
     }
     var waarde = wizAntwoorden[vraag.sleutel];
     return waarde === undefined || waarde === null || waarde === '';
@@ -11196,9 +11248,10 @@ var Afbeeldingen = (function () {
 
     var input = document.createElement('input');
     input.type = 'number';
-    input.min = '0';
     input.id = 'wiz-snelheidMmS';
-    input.placeholder = 'Exact getal in mm/s';
+    input.placeholder = 'Snelheid in mm/s';
+    input.min = '1';
+    input.required = true;
     if (wizAntwoorden.snelheidMmS !== undefined && wizAntwoorden.snelheidMmS !== null) {
       input.value = wizAntwoorden.snelheidMmS;
     }
@@ -11269,49 +11322,52 @@ var Afbeeldingen = (function () {
       wrapper.appendChild(hint);
     }
 
-    var snelkeuzeLabel = document.createElement('p');
-    snelkeuzeLabel.className = 'wiz-qhint';
-    snelkeuzeLabel.style.marginTop = '14px';
-    snelkeuzeLabel.textContent = 'Of kies een indicatieve categorie:';
-    wrapper.appendChild(snelkeuzeLabel);
+    // v1.58: de categorieën zijn vervallen; tekenen alleen als de vraag ze nog heeft.
+    if (vraag.opties && vraag.opties.length) {
+      var snelkeuzeLabel = document.createElement('p');
+      snelkeuzeLabel.className = 'wiz-qhint';
+      snelkeuzeLabel.style.marginTop = '14px';
+      snelkeuzeLabel.textContent = 'Of kies een indicatieve categorie:';
+      wrapper.appendChild(snelkeuzeLabel);
 
-    var grid = document.createElement('div');
-    grid.className = 'wiz-opt-grid';
-    vraag.opties.forEach(function (optie) {
-      var opt = document.createElement('div');
-      var isActief = !wizAntwoorden.snelheidMmS && wizAntwoorden.snelheid === optie.waarde;
-      opt.className = 'wiz-opt' + (isActief ? ' geselecteerd' : '');
-      opt.dataset.sleutel = vraag.sleutel;
-      opt.dataset.waarde = optie.waarde;
+      var grid = document.createElement('div');
+      grid.className = 'wiz-opt-grid';
+      vraag.opties.forEach(function (optie) {
+        var opt = document.createElement('div');
+        var isActief = !wizAntwoorden.snelheidMmS && wizAntwoorden.snelheid === optie.waarde;
+        opt.className = 'wiz-opt' + (isActief ? ' geselecteerd' : '');
+        opt.dataset.sleutel = vraag.sleutel;
+        opt.dataset.waarde = optie.waarde;
 
-      var radio = document.createElement('div');
-      radio.className = 'wiz-radio';
-      opt.appendChild(radio);
+        var radio = document.createElement('div');
+        radio.className = 'wiz-radio';
+        opt.appendChild(radio);
 
-      var tekst = document.createElement('div');
-      tekst.className = 'wiz-opt-tekst';
-      var titel = document.createElement('div');
-      titel.className = 'wiz-opt-titel';
-      titel.textContent = optie.label;
-      tekst.appendChild(titel);
-      if (optie.hint) {
-        var hint2 = document.createElement('div');
-        hint2.className = 'wiz-opt-hint';
-        hint2.textContent = optie.hint;
-        tekst.appendChild(hint2);
-      }
-      opt.appendChild(tekst);
+        var tekst = document.createElement('div');
+        tekst.className = 'wiz-opt-tekst';
+        var titel = document.createElement('div');
+        titel.className = 'wiz-opt-titel';
+        titel.textContent = optie.label;
+        tekst.appendChild(titel);
+        if (optie.hint) {
+          var hint2 = document.createElement('div');
+          hint2.className = 'wiz-opt-hint';
+          hint2.textContent = optie.hint;
+          tekst.appendChild(hint2);
+        }
+        opt.appendChild(tekst);
 
-      opt.addEventListener('click', function () {
-        wizAntwoorden.snelheid = optie.waarde;
-        wizAntwoorden.snelheidMmS = undefined; // categorie wint van een eerder ingevuld getal
-        wizRenderStap();
+        opt.addEventListener('click', function () {
+          wizAntwoorden.snelheid = optie.waarde;
+          wizAntwoorden.snelheidMmS = undefined; // categorie wint van een eerder ingevuld getal
+          wizRenderStap();
+        });
+        wizMaakTegelBedienbaar(opt, grid, vraag, isActief);
+
+        grid.appendChild(opt);
       });
-      wizMaakTegelBedienbaar(opt, grid, vraag, isActief);
-
-      grid.appendChild(opt);
-    });
-    wrapper.appendChild(grid);
+      wrapper.appendChild(grid);
+    }
 
     return wrapper;
   }
