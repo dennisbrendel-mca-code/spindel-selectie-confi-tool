@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.56  16-11-2026  FB-009: vraag "Moet de spindel zelfremmend zijn?" (stap Inbouw); bij ja vervalt de kogelomloopspindel
   1.55  13-11-2026  Bewegingsprofiel volgt de antwoorden van stap 4 (snelheid, slag, kracht) zolang de fasen niet met de hand zijn aangepast, anders een melding; ook in de configurator een melding als profiel en velden verschillen; tabel stap 1: prijs kogelomloop "standaard", slijtage trapezium evenredig met belasting en inschakelduur
   1.54  14-10-2026  50 mm uitloop als keuze (wizard en configurator); melding bij een RVS-moer op RVS of staal; kerndiameter RSCR gelijk aan FSCR; µ brons 0,1/0,05 zoals Kammerer; FB-008 tekst lead screw stap 2; FB-009 kogelomloopkaart toont "Zelfremming: geen"
   1.53  13-10-2026  Besluiten controle (2): f_w volgt ook de trillingen (minstens 3,0 bij trillingen of weet ik niet); kerndiameter per moer FSCR/FSCL/FDCR; kritisch toerental trapezium op d3; trapezium nooit aanbevolen bij continu bedrijf; let-op boven 1,5 m/s glijsnelheid; bewegingsprofiel in de adviesaanvraag
@@ -459,7 +460,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.55 · 13-11-2026</div>
+    <div class="versie" id="toolVersie">v1.56 · 16-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -5855,6 +5856,13 @@ var WizardLogica = (function () {
   var REDEN_EIGEN_TYPE = 'U koos dit type en het past bij uw toepassing.';
   var REDEN_KOGELOMLOOP = 'Hoog rendement en lange levensduur, geschikt voor continu bedrijf.';
   var REDEN_ANDER_TYPE = 'Het gekozen type past niet bij deze toepassing; dit is het eerste passende type.';
+  // FB-009 (v1.56, opdrachtgever 16-11-2026): zoekt de klant zelfremming, dan
+  // vervalt de kogelomloopspindel; die is nooit zelfremmend.
+  var ZELFREMMING_KOGEL = 'U zoekt een zelfremmende spindel. Een kogelomloopspindel is nooit zelfremmend: ' +
+    'de last drijft hem terug zodra het aandrijfkoppel wegvalt.';
+  var REDEN_ZELFREMMING = 'U zoekt een zelfremmende spindel; een kogelomloopspindel is dat nooit. ' +
+    'Of dit type zelfremmend is, ziet u bij "Zelfremming" op de kaart.';
+  function zoektZelfremming(a) { return a.zelfremming === 'ja'; }
   var REDEN_CONTINU = 'Bij continu bedrijf adviseren wij geen trapeziumspindel: die moet na korte tijd afkoelen. ' +
     'Dit type kan wel onafgebroken draaien.';
 
@@ -5927,6 +5935,7 @@ var WizardLogica = (function () {
       // "Pas antwoorden aan" naar een ander type) mag geen kogelomloopkaart
       // opleveren in de precisieroute (spec §2): die route adviseert niets.
       if (type === 'kogelomloop' && vraagtEngineering(a)) return;
+      if (type === 'kogelomloop' && zoektZelfremming(a)) return;
       try {
         var cfg = naarConfiguratie(a);
         if (!cfg.advies || !cfg.advies.maat) return;
@@ -5984,7 +5993,11 @@ var WizardLogica = (function () {
     var kandidaten = continu ? opties.filter(function (o) { return o.type !== 'trapezium'; }) : opties;
     if (!kandidaten.length) return opties;
     var eigen = kandidaten.filter(function (o) { return o.type === gekozenType; })[0];
-    if (continu && gekozenType === 'trapezium') {
+    if (zoektZelfremming(antwoorden) && (gekozenType === 'kogelomloop' || gekozenType === 'weet-niet') && !eigen) {
+      var zelfVoorkeur = continu ? null : kandidaten.filter(function (o) { return o.type === 'trapezium'; })[0];
+      gekozen = zelfVoorkeur || kandidaten[0];
+      reden = REDEN_ZELFREMMING;
+    } else if (continu && gekozenType === 'trapezium') {
       gekozen = kandidaten.filter(function (o) { return o.type === 'kogelomloop'; })[0] || kandidaten[0];
       reden = REDEN_CONTINU;
     } else if (eigen) {
@@ -6024,6 +6037,9 @@ var WizardLogica = (function () {
     var opties = passendeTypen(antwoorden);
     if (opties.length < 2) return null;
     if (opties.some(function (o) { return o.type === gekozenType; })) return null;
+    if (gekozenType === 'kogelomloop' && zoektZelfremming(antwoorden)) {
+      return { type: gekozenType, teksten: [], reden: 'een kogelomloopspindel is nooit zelfremmend' };
+    }
     var teksten = [];
     try {
       var cfg = naarConfiguratie(Object.assign({}, antwoorden, { type: gekozenType }));
@@ -6620,6 +6636,19 @@ var WizardLogica = (function () {
             // stilzwijgend de waarschuwing mislopen die bij verticale
             // inbouw hoort.
             optie('weetniet', 'Weet ik niet', 'Laat MCA adviseren; de tool rekent voorzichtigheidshalve met verticaal')
+          ]
+        }),
+        // FB-009 (v1.56): bij "ja" vervalt de kogelomloopspindel.
+        vraag({
+          sleutel: 'zelfremming',
+          tekst: 'Moet de spindel zelfremmend zijn?',
+          verplicht: false,
+          hint: 'Zelfremmend: de last kan de spindel niet terugdraaien als de motor stilstaat. Zelfremming is ' +
+            'nooit een veiligheidsvoorziening; bij niet-horizontale inbouw blijft een rem nodig.',
+          opties: [
+            optie('nee', 'Nee', null),
+            optie('ja', 'Ja', 'De kogelomloopspindel valt af: die is nooit zelfremmend'),
+            optie('weetniet', 'Weet ik niet', 'Alle typen blijven in beeld')
           ]
         }),
         vraag({
@@ -7319,6 +7348,10 @@ var WizardLogica = (function () {
     };
 
     if (a.type === 'kogelomloop') {
+      // FB-009 (v1.56): ook in het losse advies zeggen dat dit type niet zelfremmend is.
+      if (zoektZelfremming(a) && advies && advies.waarschuwingen) {
+        advies.waarschuwingen.push({ ernst: 'let-op', tekst: ZELFREMMING_KOGEL });
+      }
       cfg.klasse = KLASSE[(a.nauwkeurigheid || 'geen') + '|' + (a.tolerantie || '')] || 'T7';
       cfg.fabricage = FABRICAGE[(a.nauwkeurigheid || 'geen') + '|' + (a.tolerantie || '')] || 'gerold';
       cfg.voorspanning = a.nauwkeurigheid === 'geen' ? 'S' : 'A';
@@ -7637,7 +7670,9 @@ var Offerte = (function () {
     // Spec 2026-10-09-dn-lager-geleiding §2.4 (v1.34).
     geleiding: 'Type geleiding', versnelling: 'Versnelling',
     // v1.37 (FB-002).
-    slagtijd: 'Tijd per slag (heenweg)'
+    slagtijd: 'Tijd per slag (heenweg)',
+    // FB-009 (v1.56).
+    zelfremming: 'Zelfremming gewenst'
   };
   var VOORSELECTIE_WAARDEN = {
     ja: 'ja', nee: 'nee', weetniet: 'weet ik niet', geen: 'geen',
@@ -11563,7 +11598,7 @@ var Afbeeldingen = (function () {
       var ontbreekt = WizardLogica.ontbrekendGekozenType(wizAntwoorden);
       if (ontbreekt) {
         resultaatDiv.appendChild(wizAlert('Uw gekozen type (' + PASSEND_TYPE_NAAM[ontbreekt.type] +
-          ') staat niet in het overzicht: het past niet bij deze toepassing.', 'info'));
+          ') staat niet in het overzicht: ' + (ontbreekt.reden || 'het past niet bij deze toepassing') + '.', 'info'));
         ontbreekt.teksten.forEach(function (t) { resultaatDiv.appendChild(wizAlert(t, 'kritiek')); });
       }
       wizRenderOverzicht(resultaatDiv, passend);
