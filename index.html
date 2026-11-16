@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.57  16-11-2026  f_w bij "weet ik niet" 1,5 (was 3,0); trillingen en schokken apart; eigen f_w invullen (wizard en configurator) met legenda; bevestigknop bij de snelheid in stap 4
   1.56  16-11-2026  FB-009: vraag "Moet de spindel zelfremmend zijn?" (stap Inbouw); bij ja vervalt de kogelomloopspindel
   1.55  13-11-2026  Bewegingsprofiel volgt de antwoorden van stap 4 (snelheid, slag, kracht) zolang de fasen niet met de hand zijn aangepast, anders een melding; ook in de configurator een melding als profiel en velden verschillen; tabel stap 1: prijs kogelomloop "standaard", slijtage trapezium evenredig met belasting en inschakelduur
   1.54  14-10-2026  50 mm uitloop als keuze (wizard en configurator); melding bij een RVS-moer op RVS of staal; kerndiameter RSCR gelijk aan FSCR; µ brons 0,1/0,05 zoals Kammerer; FB-008 tekst lead screw stap 2; FB-009 kogelomloopkaart toont "Zelfremming: geen"
@@ -303,6 +304,13 @@ code.bestelcode {
 .wiz-groep { font-family: Fugue, 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--motion); margin: 8px 0 12px; }
 .wiz-qlabel { font-family: Fugue, 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 1rem; color: var(--motion); margin-bottom: 12px; display: block; }
 .wiz-qhint { font-size: .78rem; color: var(--gedempt); margin-top: 6px; }
+/* v1.57: legenda bij f_w, en de bevestigknop bij de snelheid. */
+.fw-legenda { border-collapse: collapse; font-size: .78rem; margin-top: 8px; color: var(--gedempt); }
+.fw-legenda caption { text-align: left; font-weight: 600; padding-bottom: 4px; }
+.fw-legenda td { padding: 2px 14px 2px 0; border-bottom: 1px solid var(--rand); }
+.fw-legenda td:last-child { text-align: right; white-space: nowrap; }
+.wiz-invoer-rij { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wiz-bevestigd { font-size: .78rem; color: var(--goed); margin-top: 6px; }
 .wiz-qgroup input[type=number], .wiz-qgroup input[type=text] {
   width: 100%; max-width: 320px; padding: 10px 13px; border: 1.5px solid var(--rand); border-radius: 6px;
   font-family: Fugue, Barlow, sans-serif; font-size: .92rem; color: var(--motion); background: var(--offwhite);
@@ -460,7 +468,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.56 · 16-11-2026</div>
+    <div class="versie" id="toolVersie">v1.57 · 16-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2387,6 +2395,8 @@ var ConfiguratorLogica = (function () {
     { naam: 'wekenPerJaar',     label: 'Aantal weken per jaar (week/jaar)',  zichtbaar: ALLEEN_KOGEL, opties: null },
     { naam: 'jaren',            label: 'Gewenste levensduur van de spindel (jaar)', zichtbaar: ALLEEN_KOGEL, opties: null },
     { naam: 'fs',               label: 'Statische veiligheid f_s',           zichtbaar: ALLEEN_KOGEL, opties: null },
+    // v1.57: eigen belastingsfactor f_w; leeg = volgens snelheid en trillingen.
+    { naam: 'fwEigen',          label: 'Belastingsfactor f_w (eigen waarde)', zichtbaar: ALLEEN_KOGEL, opties: null },
     // Drie waarden, geen boolean: stap 5 van de wizard biedt naast
     // horizontaal en verticaal ook 'Onder een hoek' aan, en het
     // bronnenonderzoek (Onderzoek/2026-09-10-zelfremming-trapeziumspindels.md
@@ -2700,7 +2710,9 @@ var ConfiguratorLogica = (function () {
       uitK.fsKeuze = eisen.veiligheid.keuze;
       // De letterlijke aannamemelding bij 'onbekend' (spec §2.4), anders null.
       uitK.fsMelding = eisen.veiligheid.melding;
-      uitK.fw = Rekenkern.belastingsfactor(belasting.snelheidMmPerSec, uitK.fsKeuze);
+      // v1.57: een eigen f_w van de klant wint; anders snelheid en trillingen.
+      uitK.fw = Rekenkern.belastingsfactor(belasting.snelheidMmPerSec, uitK.fsKeuze, belasting.fwEigen);
+      uitK.fwBron = Rekenkern.belastingsfactorBron(belasting.snelheidMmPerSec, uitK.fsKeuze, belasting.fwEigen);
       var profielK = Rekenkern.profielSamenvatting(belasting.profiel);
       if (profielK) uitK.profiel = profielK;
       if (cDyn !== null) {
@@ -3611,11 +3623,46 @@ var Rekenkern = (function () {
   // 1,5–3,0. Bij trillingen en bij "weet ik niet" (de zwaarste kant) is f_w
   // dus minstens 3,0, de bovenkant van die band; de snelheidsband blijft
   // gelden als die hoger uitkomt. Zonder trillingskeuze alleen de snelheid.
+  //
+  // v1.57 (opdrachtgever 16-11-2026): bij "weet ik niet" minstens 1,5
+  // ("normale belasting"), niet meer 3,0. Wie trillingen en/of schokken
+  // heeft, kiest dat en krijgt 3,0. Een klant die f_w precies weet, vult hem
+  // zelf in (FW_GRENZEN); die waarde geldt dan zoals opgegeven.
   var FW_TRILLINGEN = 3.0;
-  function belastingsfactor(vMmPerSec, trilling) {
+  var FW_ONBEKEND = 1.5;
+  var FW_GRENZEN = { min: 1.0, max: 3.5 };
+  // Legenda bij de vraag en het invulveld: [omschrijving, f_w].
+  var FW_LEGENDA = [
+    ['Geen trillingen of schokken', '1,0 – 1,2'],
+    ['Normale belasting', '1,2 – 1,5'],
+    ['Trillingen en/of schokken', '1,5 – 3,0'],
+    ['Snelheid onder 0,25 m/s', '1,2'],
+    ['Snelheid 0,25 – 1 m/s', '1,5'],
+    ['Snelheid 1 – 2 m/s', '2,0'],
+    ['Snelheid boven 2 m/s', '3,5']
+  ];
+  function eigenFw(eigen) {
+    if (eigen === undefined || eigen === null || eigen === '') return null;
+    if (typeof eigen !== 'number' || !Number.isFinite(eigen) || eigen < FW_GRENZEN.min || eigen > FW_GRENZEN.max) {
+      throw new Error('f_w moet tussen 1,0 en 3,5 liggen, kreeg ' + eigen);
+    }
+    return eigen;
+  }
+  // Waar f_w vandaan komt: 'eigen', 'trillingen', 'onbekend' of 'snelheid'.
+  function belastingsfactorBron(vMmPerSec, trilling, eigen) {
+    if (eigenFw(eigen) !== null) return 'eigen';
+    var fwV = belastingsfactor(vMmPerSec);
+    if (trilling === 'trillingen' && FW_TRILLINGEN > fwV) return 'trillingen';
+    if (trilling === 'onbekend' && FW_ONBEKEND > fwV) return 'onbekend';
+    return 'snelheid';
+  }
+  function belastingsfactor(vMmPerSec, trilling, eigen) {
+    var e = eigenFw(eigen);
+    if (e !== null) return e;
     positiefGetal(vMmPerSec, 'vMmPerSec');
     var fw = vMmPerSec < 250 ? 1.2 : vMmPerSec < 1000 ? 1.5 : vMmPerSec <= 2000 ? 2.0 : 3.5;
-    if (trilling === 'trillingen' || trilling === 'onbekend') fw = Math.max(fw, FW_TRILLINGEN);
+    if (trilling === 'trillingen') fw = Math.max(fw, FW_TRILLINGEN);
+    if (trilling === 'onbekend') fw = Math.max(fw, FW_ONBEKEND);
     return fw;
   }
 
@@ -3932,6 +3979,11 @@ var Rekenkern = (function () {
     statischeVeiligheid: statischeVeiligheid,
     FS_AANNAME_MELDING: FS_AANNAME_MELDING,
     belastingsfactor: belastingsfactor,
+    belastingsfactorBron: belastingsfactorBron,
+    eigenFw: eigenFw,
+    FW_ONBEKEND: FW_ONBEKEND,
+    FW_GRENZEN: FW_GRENZEN,
+    FW_LEGENDA: FW_LEGENDA,
     FW_TRILLINGEN: FW_TRILLINGEN,
     levensduur: levensduur,
     profielSamenvatting: profielSamenvatting,
@@ -4209,6 +4261,7 @@ var Advies = (function () {
       valideerEindigPositief(invoer.vereisteUren, 'vereisteUren');
     }
     Rekenkern.statischeVeiligheid(invoer.fs);
+    Rekenkern.eigenFw(invoer.fwEigen);
     if (invoer.type === 'draadspindel') {
       valideerOptioneel(invoer.spelingsvrij, 'spelingsvrij', ['ja', 'nee', 'weetniet']);
       valideerOptioneel(invoer.coating, 'coating', ['T', 'U']);
@@ -4265,7 +4318,7 @@ var Advies = (function () {
     var c = Catalogus.moerDraaggetal('kogelomloop', code, m.d, m.P);
     var c0 = Catalogus.moerStatisch('kogelomloop', code, m.d, m.P);
     if (c === null || c0 === null) return null;
-    var fw = Rekenkern.belastingsfactor(invoer.snelheidMmPerSec, invoer.fsKeuze);
+    var fw = Rekenkern.belastingsfactor(invoer.snelheidMmPerSec, invoer.fsKeuze, invoer.fwEigen);
     // v1.52: met een bewegingsprofiel de gemiddelde last en het gemiddelde toerental.
     var profiel = Rekenkern.profielSamenvatting(invoer.profiel);
     var uren = profiel ? Rekenkern.levensduurUitProfiel(c, profiel, fw, m.P)
@@ -4277,6 +4330,7 @@ var Advies = (function () {
       cDynKN: c,
       c0aKN: c0,
       fw: fw,
+      fwBron: Rekenkern.belastingsfactorBron(invoer.snelheidMmPerSec, invoer.fsKeuze, invoer.fwEigen),
       fs: invoer.fs,
       fsKeuze: invoer.fsKeuze,
       levensduurUren: uren,
@@ -6091,6 +6145,8 @@ var WizardLogica = (function () {
       // de standaardwaarde waar de balk begint.
       schuif: v.schuif === true,
       standaard: v.standaard !== undefined ? v.standaard : null,
+      // v1.57: tabel [omschrijving, waarde] onder de vraag, anders null.
+      legenda: v.legenda || null,
       zichtbaar: v.zichtbaar || altijdZichtbaar
     };
   }
@@ -6541,7 +6597,7 @@ var WizardLogica = (function () {
     };
   }
 
-  var GEBRUIK_SLEUTELS = ['bedrijf', 'smering', 'urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren', 'trillingen'];
+  var GEBRUIK_SLEUTELS = ['bedrijf', 'smering', 'urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren', 'trillingen', 'fwEigen'];
   function stapGebruik(tak) {
     return {
       nummer: 5,
@@ -6579,11 +6635,24 @@ var WizardLogica = (function () {
         sleutel: 'trillingen',
         tekst: 'Treden er trillingen of schokken op?',
         verplicht: false,
+        // v1.57: trillingen en schokken apart; "weet ik niet" rekent f_w 1,5.
         opties: [
-          optie('nee', 'Nee', 'Statische veiligheid f_s 1,3'),
-          optie('ja', 'Ja', 'Statische veiligheid f_s 3,0'),
-          optie('weetniet', 'Weet ik niet', 'Aangenomen f_s 3,0; MCA stemt de juiste waarde met u af')
+          optie('nee', 'Nee', 'Belastingsfactor f_w volgens de snelheid · statische veiligheid f_s 1,3'),
+          optie('trillingen', 'Alleen trillingen', 'f_w minstens 3,0 · f_s 3,0'),
+          optie('schokken', 'Alleen schokken', 'f_w minstens 3,0 · f_s 3,0'),
+          optie('beide', 'Trillingen én schokken', 'f_w minstens 3,0 · f_s 3,0'),
+          optie('weetniet', 'Weet ik niet', 'f_w minstens 1,5 (normale belasting) · aangenomen f_s 3,0; MCA stemt de juiste waarden met u af')
         ]
+      }),
+      vraag({
+        sleutel: 'fwEigen',
+        tekst: 'Belastingsfactor f_w, als u die precies weet',
+        type: 'getal',
+        verplicht: false,
+        min: Rekenkern.FW_GRENZEN.min,
+        max: Rekenkern.FW_GRENZEN.max,
+        legenda: Rekenkern.FW_LEGENDA,
+        hint: 'Optioneel, tussen 1,0 en 3,5. Leeg laten: de tool kiest f_w uit de snelheid en uw antwoord over trillingen en schokken (zie de tabel).'
       })
     ];
   }
@@ -6994,7 +7063,9 @@ var WizardLogica = (function () {
   }
 
   var BEDRIJFSUREN_SLEUTELS = ['urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren'];
-  var TRILLINGEN_NAAR_FS = { nee: 'geen', ja: 'trillingen', weetniet: 'onbekend' };
+  // v1.57: trillingen, schokken of beide geven dezelfde f_s; 'ja' blijft voor oude antwoorden.
+  var TRILLINGEN_NAAR_FS = { nee: 'geen', ja: 'trillingen', trillingen: 'trillingen', schokken: 'trillingen',
+    beide: 'trillingen', weetniet: 'onbekend' };
 
   // De belasting waarmee de configurator na "Start configurator" opent: de
   // standaardbelasting van het ui-blok met de wizardinvoer eroverheen, waarbij
@@ -7122,6 +7193,8 @@ var WizardLogica = (function () {
       vereisteUren: bedrijfsuren ? bedrijfsuren.uren : undefined,
       bedrijfsuren: bedrijfsuren,
       fs: fsKeuze,
+      // v1.57: eigen f_w van de klant, leeg = automatisch.
+      fwEigen: ontbreekt(a.fwEigen) ? undefined : a.fwEigen,
       // Alleen de draadspindeltak van Advies.kies() leest deze drie; de
       // andere takken negeren ze.
       spelingsvrij: a.spelingsvrij,
@@ -7647,6 +7720,8 @@ var Offerte = (function () {
     urenPerDag: 'Bedrijfsuren per dag', dagenPerWeek: 'Aantal dagen per week',
     wekenPerJaar: 'Aantal weken per jaar', jaren: 'Gewenste levensduur van de spindel',
     fs: 'Statische veiligheid f_s',
+    // v1.57.
+    trillingen: 'Trillingen of schokken', fwEigen: 'Belastingsfactor f_w (eigen waarde)',
     // v1.35 (spec 2026-10-09-trapezium-mcalc §2.2/§2.4).
     belastingsaart: 'Belastingsaart', smering: 'Smering'
   };
@@ -7711,8 +7786,11 @@ var Offerte = (function () {
   // Eén opbouw voor de twee extra secties hierboven: kop, dan elk gevuld veld.
   var WAARDEN_PER_VRAAG = {
     // f_s-keuze van het rekenpaneel (zelfde teksten als de keuzelijst in de ui).
-    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen of schokken (3,0)',
+    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen en/of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
+    // v1.57: het antwoord op de trillingenvraag van de wizard.
+    trillingen: { nee: 'nee', ja: 'ja', trillingen: 'alleen trillingen', schokken: 'alleen schokken',
+      beide: 'trillingen én schokken', weetniet: 'weet ik niet (f_w 1,5)' },
     nauwkeurigheid: { beide: 'herhaal- en positienauwkeurigheid' },
     belastingsaart: { gecontroleerd: 'constant, gecontroleerde start/stop (f_i 0,75)',
       hard: 'constant, harde start/stop (f_i 0,4)', variabel: 'sterk variabel (f_i 0,3)',
@@ -8208,8 +8286,11 @@ var Offerte = (function () {
       dagenPerWeek: kogel ? antwoorden.dagenPerWeek : undefined,
       wekenPerJaar: kogel ? antwoorden.wekenPerJaar : undefined,
       jaren: kogel ? antwoorden.jaren : undefined,
-      fs: kogel && antwoorden.trillingen ? (antwoorden.trillingen === 'ja' ? 'trillingen'
-        : (antwoorden.trillingen === 'nee' ? 'geen' : 'onbekend')) : undefined
+      fs: kogel && antwoorden.trillingen ? (antwoorden.trillingen === 'nee' ? 'geen'
+        : (antwoorden.trillingen === 'weetniet' ? 'onbekend' : 'trillingen')) : undefined,
+      // v1.57: welke van de twee, en een eigen f_w.
+      trillingen: kogel ? antwoorden.trillingen : undefined,
+      fwEigen: kogel ? antwoorden.fwEigen : undefined
     };
   }
 
@@ -9084,7 +9165,7 @@ var Afbeeldingen = (function () {
   var BEDRIJFSUREN_VELDEN = ['urenPerDag', 'dagenPerWeek', 'wekenPerJaar', 'jaren'];
 
   var BELASTING_OPTIE_LABELS = {
-    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen of schokken (3,0)',
+    fs: { geen: 'Geen trillingen of schokken (1,3)', trillingen: 'Trillingen en/of schokken (3,0)',
       onbekend: 'Onbekend (aangenomen 3,0)' },
     moermateriaal: { brons: 'Brons', kunststof: 'Kunststof' },
     bedrijf: { incidenteel: 'Incidenteel', regelmatig: 'Regelmatig', continu: 'Continu' },
@@ -9520,6 +9601,27 @@ var Afbeeldingen = (function () {
   // <input> neerzetten. Welke velden er zijn en welke opties ze hebben komt
   // volledig uit het zuivere blok (zie de tests daar tegen controleer() en
   // Advies.kies()) — hier wordt niets meer beslist, alleen getekend.
+  // v1.57: tabel met de belastingsfactoren f_w (Rekenkern.FW_LEGENDA).
+  function bouwFwLegenda() {
+    var tabel = document.createElement('table');
+    tabel.className = 'fw-legenda';
+    var kop = document.createElement('caption');
+    kop.textContent = 'Belastingsfactor f_w';
+    tabel.appendChild(kop);
+    var body = document.createElement('tbody');
+    Rekenkern.FW_LEGENDA.forEach(function (r) {
+      var tr = document.createElement('tr');
+      r.forEach(function (cel) {
+        var td = document.createElement('td');
+        td.textContent = cel;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tabel.appendChild(body);
+    return tabel;
+  }
+
   function bouwBelastingVeld(veld) {
     var wrapper = document.createElement('div');
     wrapper.className = 'veld';
@@ -9553,10 +9655,18 @@ var Afbeeldingen = (function () {
         if (g.max !== null) input.max = String(g.max); else input.step = 'any';
         input.title = 'Leeg laten: minimaal 10.000 bedrijfsuren';
       });
+      if (veld.naam === 'fwEigen') {
+        input.min = String(Rekenkern.FW_GRENZEN.min);
+        input.max = String(Rekenkern.FW_GRENZEN.max);
+        input.step = '0.1';
+        input.placeholder = 'automatisch';
+        input.title = 'Leeg laten: f_w volgt uit de snelheid en de trillingen';
+      }
     }
     input.id = 'belasting-' + veld.naam;
     input.name = veld.naam;
     wrapper.appendChild(input);
+    if (veld.naam === 'fwEigen') wrapper.appendChild(bouwFwLegenda());
     return wrapper;
   }
 
@@ -9790,7 +9900,7 @@ var Afbeeldingen = (function () {
         // 10.000 u): leeg wordt undefined, niet Number('') = 0. Andere
         // getalvelden houden het oude gedrag (leeg → 0 → een duidelijke fout).
         belasting[veld.naam] = el.value === '' &&
-          (BEDRIJFSUREN_VELDEN.indexOf(veld.naam) !== -1 || veld.naam === 'slagMm')
+          (BEDRIJFSUREN_VELDEN.indexOf(veld.naam) !== -1 || veld.naam === 'slagMm' || veld.naam === 'fwEigen')
           ? undefined : Number(el.value);
       } else {
         belasting[veld.naam] = el.value;
@@ -9859,10 +9969,12 @@ var Afbeeldingen = (function () {
           'Met een bewegingsprofiel rekent de tool met de gemiddelde last.'));
       // v1.53: de belastingsfactor, die ook de trillingen volgt.
       if (typeof r.fw === 'number') {
+        // v1.57: met de bron van f_w.
+        var fwUitleg = { eigen: ' (eigen waarde).',
+          trillingen: ' (bij trillingen en/of schokken minstens 3,0).',
+          onbekend: ' (trillingen onbekend: minstens 1,5).' };
         container.appendChild(toelichting('Belastingsfactor f_w ' + fmt(r.fw, 1) +
-          (r.fw >= Rekenkern.FW_TRILLINGEN && r.fsKeuze !== 'geen'
-            ? ' (bij trillingen of schokken, of als die onbekend zijn, minstens 3,0).'
-            : ' (volgens de snelheid).')));
+          (fwUitleg[r.fwBron] || ' (volgens de snelheid).')));
       }
     }
     if (typeof r.statischGrensKN === 'number') {
@@ -10822,6 +10934,14 @@ var Afbeeldingen = (function () {
   }
 
   // ── Eén vraag tekenen ──────────────────────────────────────────────────
+  // v1.57: een eigen f_w buiten 1,0–3,5 houdt "Volgende" tegen.
+  function wizFwOngeldig(vraag) {
+    if (vraag.sleutel !== 'fwEigen' || !vraag.zichtbaar(wizAntwoorden)) return false;
+    var w = wizAntwoorden.fwEigen;
+    if (w === undefined || w === null || w === '') return false;
+    try { Rekenkern.eigenFw(w); return false; } catch (e) { return true; }
+  }
+
   function wizVraagOnbeantwoord(vraag) {
     if (!vraag.verplicht || !vraag.zichtbaar(wizAntwoorden)) return false;
     // 'snelheid' heeft twee mogelijke bronnen (zie wizBouwSnelheidVraag
@@ -11018,6 +11138,7 @@ var Afbeeldingen = (function () {
       input.min = vraag.min !== null && vraag.min !== undefined ? String(vraag.min) : '0';
       if (vraag.max !== null && vraag.max !== undefined) input.max = String(vraag.max);
       if (vraag.sleutel === 'jaren') input.step = 'any';
+      if (vraag.sleutel === 'fwEigen') input.step = '0.1';
     }
     input.id = 'wiz-' + vraag.sleutel;
     // v1.37 (FB-003): het jarenveld hoort bij de bedrijfsuren en staat uit
@@ -11041,6 +11162,19 @@ var Afbeeldingen = (function () {
       hint.textContent = vraag.hint;
       wrapper.appendChild(hint);
     }
+    if (vraag.sleutel === 'fwEigen') {
+      var fout = document.createElement('p');
+      fout.id = 'wiz-fwEigen-fout';
+      fout.className = 'wiz-qhint';
+      fout.setAttribute('aria-live', 'polite');
+      var toonFout = function () {
+        fout.textContent = wizFwOngeldig(vraag) ? 'Vul een waarde tussen 1,0 en 3,5 in, of laat het veld leeg.' : '';
+      };
+      input.addEventListener('input', toonFout);
+      toonFout();
+      wrapper.appendChild(fout);
+    }
+    if (vraag.legenda) wrapper.appendChild(bouwFwLegenda());
     return wrapper;
   }
 
@@ -11049,6 +11183,7 @@ var Afbeeldingen = (function () {
   // exclusief — typt de klant een getal, dan vervalt een eerder gekozen
   // categorie en andersom — zodat wizAntwoorden nooit tegenstrijdig twee
   // "actieve" antwoorden op dezelfde vraag bevat.
+  var wizSnelheidBevestigd = null;
   function wizBouwSnelheidVraag(vraag) {
     var wrapper = document.createElement('div');
     wrapper.className = 'wiz-qgroup';
@@ -11067,13 +11202,19 @@ var Afbeeldingen = (function () {
     if (wizAntwoorden.snelheidMmS !== undefined && wizAntwoorden.snelheidMmS !== null) {
       input.value = wizAntwoorden.snelheidMmS;
     }
-    input.addEventListener('input', function () {
+    function neemOver() {
       if (input.value === '') {
         wizAntwoorden.snelheidMmS = undefined;
       } else {
         wizAntwoorden.snelheidMmS = Number(input.value);
         wizAntwoorden.snelheid = undefined; // getal wint van een eerder gekozen categorie
       }
+    }
+    input.addEventListener('input', function () {
+      neemOver();
+      wizSnelheidBevestigd = null;
+      var melding = document.getElementById('wiz-snelheid-bevestigd');
+      if (melding) melding.textContent = '';
       wizWerkVolgendeKnopBij();
       // Categorie-chips visueel deselecteren zonder de hele stap te
       // her-renderen (dat zou de focus uit dit invoerveld halen).
@@ -11081,7 +11222,45 @@ var Afbeeldingen = (function () {
         o.classList.remove('geselecteerd');
       });
     });
-    wrapper.appendChild(input);
+    // v1.57 (opdrachtgever 16-11-2026): een bevestigknop, zodat zichtbaar is
+    // dat de nieuwe snelheid is vastgelegd. Hij tekent de stap opnieuw, zodat
+    // ook het bewegingsprofiel en de meldingen meteen de nieuwe waarde tonen.
+    // Enter in het veld doet hetzelfde; 'change' vangt browsers die bij de
+    // pijltjes geen 'input' sturen.
+    function bevestig() {
+      neemOver();
+      wizSnelheidBevestigd = wizAntwoorden.snelheidMmS === undefined ? null : wizAntwoorden.snelheidMmS;
+      wizRenderStap();
+      var nieuw = document.getElementById('wiz-snelheidMmS');
+      if (nieuw) nieuw.focus();
+    }
+    input.addEventListener('change', neemOver);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); bevestig(); }
+    });
+    var rij = document.createElement('div');
+    rij.className = 'wiz-invoer-rij';
+    rij.appendChild(input);
+    var knop = document.createElement('button');
+    knop.type = 'button';
+    knop.id = 'wiz-snelheid-bevestig';
+    knop.className = 'knop knop-ghost';
+    knop.textContent = 'Bevestig';
+    knop.addEventListener('click', bevestig);
+    rij.appendChild(knop);
+    wrapper.appendChild(rij);
+    var bevestigd = document.createElement('p');
+    bevestigd.id = 'wiz-snelheid-bevestigd';
+    bevestigd.className = 'wiz-bevestigd';
+    bevestigd.setAttribute('aria-live', 'polite');
+    if (wizSnelheidBevestigd !== null && wizSnelheidBevestigd === wizAntwoorden.snelheidMmS) {
+      // Met de hand aangepast profiel: dat wint (v1.55), dus zeg dat eerlijk.
+      bevestigd.textContent = '✓ Snelheid vastgelegd: ' + fmtDuizend(wizSnelheidBevestigd) + ' mm/s. ' +
+        (WizardLogica.profielMelding(wizAntwoordenVoorAdvies())
+          ? 'Let op: het bewegingsprofiel rekent nog met een andere snelheid; zie de melding bij het profiel.'
+          : 'Het advies rekent hiermee.');
+    }
+    wrapper.appendChild(bevestigd);
 
     if (vraag.hint) {
       var hint = document.createElement('p');
@@ -11858,7 +12037,7 @@ var Afbeeldingen = (function () {
     var stap = wizStappen()[wizStapIndex];
     var volgendeKnop = document.getElementById('wizVolgende');
     if (volgendeKnop) {
-      volgendeKnop.disabled = stap.vragen.some(wizVraagOnbeantwoord);
+      volgendeKnop.disabled = stap.vragen.some(wizVraagOnbeantwoord) || stap.vragen.some(wizFwOngeldig);
     }
     wizWerkBewegingMeldingBij();
   }
