@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.60  19-11-2026  FB-012: stappenbalk in de voorselectie; elke stap is direct aan te klikken zodra de stappen ervóór zijn ingevuld
   1.59  16-11-2026  Paginabreedte 1240px voor alle schermen (voorselectie, configurator, zelftest)
   1.58  16-11-2026  Besluiten 16-11: corrosief trapezium bronzen moer op RVS (voeding RVS-moer met let-op over lood); snelheid altijd als getal, categorieën vervallen; stappenmotor hoogstens 1.000 /min; f_s zonder trillingen 2,5 (was 1,3)
   1.57  16-11-2026  f_w bij "weet ik niet" 1,5 (was 3,0); trillingen en schokken apart; eigen f_w invullen (wizard en configurator) met legenda; bevestigknop bij de snelheid in stap 4
@@ -292,6 +293,16 @@ code.bestelcode {
 }
 .wiz-progress-label strong { color: var(--motion); }
 .wiz-progress-bar { height: 6px; background: var(--offwhite); border-radius: 4px; overflow: hidden; border: 1px solid var(--rand); }
+/* FB-012 (v1.60): per stap een knop, zodat de klant na het resultaat (of
+   vanuit de configurator) direct naar een eerdere stap springt. */
+.wiz-stapnav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wiz-stapknop {
+  font: inherit; font-size: .78rem; padding: 4px 10px; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--rand); background: var(--oppervlak); color: var(--motion);
+}
+.wiz-stapknop:hover:not(:disabled) { border-color: var(--motion); }
+.wiz-stapknop[aria-current="step"] { background: var(--motion); border-color: var(--motion); color: #fff; font-weight: 600; }
+.wiz-stapknop:disabled { cursor: default; color: var(--gedempt); opacity: .6; }
 .wiz-progress-fill { height: 100%; background: linear-gradient(90deg, var(--motion), var(--linear)); transition: width .3s ease; border-radius: 4px; }
 
 .wiz-eyebrow {
@@ -470,7 +481,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.59 · 16-11-2026</div>
+    <div class="versie" id="toolVersie">v1.60 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -495,6 +506,7 @@ code.bestelcode {
         <span id="wizStepName">Type spindel</span>
       </div>
       <div class="wiz-progress-bar"><div class="wiz-progress-fill" id="wizProgressFill" style="width:12.5%"></div></div>
+      <nav class="wiz-stapnav" id="wizStapNav" aria-label="Ga naar stap"></nav>
     </div>
     <div id="wizContainer"></div>
   </div>
@@ -12096,6 +12108,7 @@ var Afbeeldingen = (function () {
     if (volgendeKnop) {
       volgendeKnop.disabled = stap.vragen.some(wizVraagOnbeantwoord) || stap.vragen.some(wizFwOngeldig);
     }
+    wizRenderStapNav(wizStappen());
     wizWerkBewegingMeldingBij();
   }
 
@@ -12133,6 +12146,29 @@ var Afbeeldingen = (function () {
       var pm = WizardLogica.profielMelding(wizAntwoordenVoorAdvies());
       if (pm) profielVak.appendChild(wizAlert(pm, null));
     }
+  }
+
+  // FB-012 (v1.60): een stap is aan te klikken zodra alle stappen ervóór
+  // volledig zijn ingevuld; de antwoorden blijven gewoon staan.
+  function wizStapCompleet(stap) {
+    return !stap.vragen.some(wizVraagOnbeantwoord) && !stap.vragen.some(wizFwOngeldig);
+  }
+  function wizRenderStapNav(stappen) {
+    var nav = document.getElementById('wizStapNav');
+    if (!nav) return;
+    nav.innerHTML = ''; // wist de container; geen data hierin
+    var bereikbaar = true;
+    stappen.forEach(function (st, i) {
+      var knop = document.createElement('button');
+      knop.type = 'button';
+      knop.className = 'wiz-stapknop';
+      knop.textContent = st.nummer + ' ' + st.titel;
+      knop.disabled = !bereikbaar;
+      if (i === wizStapIndex) knop.setAttribute('aria-current', 'step');
+      knop.addEventListener('click', function () { wizGoTo(i); });
+      nav.appendChild(knop);
+      if (!wizStapCompleet(st)) bereikbaar = false;
+    });
   }
 
   function wizGoTo(index) {
@@ -12180,6 +12216,7 @@ var Afbeeldingen = (function () {
     if (wizStepTotaalEl) wizStepTotaalEl.textContent = stappen.length;
     wizStepNameEl.textContent = stap.titel;
     wizProgressFillEl.style.width = (stap.nummer / stappen.length * 100) + '%';
+    wizRenderStapNav(stappen);
 
     wizContainer.innerHTML = '';
 
