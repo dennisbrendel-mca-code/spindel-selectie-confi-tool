@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.62  19-11-2026  FB-014: kaart "Advies door MCA" noemt bij tolerantie zeer hoog klasse P1 of P3 (hoog blijft P3 of P5)
   1.61  19-11-2026  FB-013: positie-/beide-nauwkeurigheid met tolerantie gemiddeld toetst de T7-spoedfout over de slag (boven ±0,2 mm via MCA, vanaf ±0,05 mm een let-op); wizardantwoorden blijven na verversen bewaard (met "Begin opnieuw")
   1.60  19-11-2026  FB-012: stappenbalk in de voorselectie; elke stap is direct aan te klikken zodra de stappen ervóór zijn ingevuld
   1.59  16-11-2026  Paginabreedte 1240px voor alle schermen (voorselectie, configurator, zelftest)
@@ -482,7 +483,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.61 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.62 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -7066,6 +7067,12 @@ var WizardLogica = (function () {
       : basis + 'Heeft u een kleinere tolerantie nodig, vraag dan advies aan de product engineers van MCA.';
   }
 
+  // FB-014 (v1.62): zeer hoog (< 0,01 mm) vraagt P1 of P3, hoog (0,01 –
+  // 0,05 mm) P3 of P5 (v300p P1 6 µm, P3 12 µm, P5 23 µm per 300 mm).
+  function precisieKlasseTekst(a) {
+    return a.tolerantie === 'zeerhoog' ? 'P1 of P3' : 'P3 of P5';
+  }
+
   function vraagtEngineering(a) {
     if (tolerantieVraagtEngineering(a)) return true;
     var g = spoedfoutGeval(a);
@@ -7721,6 +7728,7 @@ var WizardLogica = (function () {
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
     spoedfoutT7Mm: spoedfoutT7Mm,
+    precisieKlasseTekst: precisieKlasseTekst,
     spoedfoutMelding: spoedfoutMelding,
     bewegingsControle: bewegingsControle,
     smeringMelding: smeringMelding,
@@ -11877,7 +11885,7 @@ var Afbeeldingen = (function () {
       var mcaTekst = document.createElement('p');
       // FB-013 (v1.61): bij een te grote spoedfout over de slag die reden.
       mcaTekst.textContent = WizardLogica.precisieMelding(wizAntwoorden)
-        ? 'Voor deze nauwkeurigheid (klasse P3 of P5) adviseert de tool geen ' +
+        ? 'Voor deze nauwkeurigheid (klasse ' + WizardLogica.precisieKlasseTekst(wizAntwoorden) + ') adviseert de tool geen ' +
           'spindel: de product engineers van MCA bepalen samen met u de juiste oplossing.'
         : WizardLogica.spoedfoutMelding(wizAntwoorden);
       mcaInhoud.appendChild(mcaTekst);
