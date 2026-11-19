@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.68  19-11-2026  Kunststof trapeziummoer: toelaatbare vlaktedruk volgt de p–glijsnelheid-kromme (7 N/mm² bij 0,1 m/s tot 0,2 N/mm² bij 3,3 m/s), was 1 N/mm² tot 0,6 m/s
   1.67  19-11-2026  Leverprogramma RVS 316 (1.4401) trapeziumspindels: E = RVS 316 bij elke maat behalve Tr 48×8, links en rechts; D = RVS 304 volgens de catalogustabel
   1.66  19-11-2026  FB-017: lagerconfiguratie los – los vervalt als keuze in de wizard en de configurator
   1.65  19-11-2026  FB-016: melding bij een hoge tolerantie in stap 2 opvallender (kader in MCA-roze, kop "Geen automatisch advies: MCA adviseert u") en schuift in beeld
@@ -503,7 +504,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.67 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.68 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -3530,10 +3531,18 @@ var Rekenkern = (function () {
 
   // Toelaatbare vlaktedruk (N/mm²) per glijsnelheid op de flankdiameter, in
   // stappen van 0,1 m/s (0,1 … 2,9). Kolom "CuSn- en CuAl-legering / staal"
-  // (brons en RVS-moer) en PA (kunststof, 1 N/mm² tot 0,6 m/s).
+  // (brons en RVS-moer). Kunststof: zie P_MAX_KUNSTSTOF.
   var P_MAX_METAAL = [19.3, 18.6, 18, 17.3, 16.6, 16, 15.3, 14.6, 14, 13.3, 12.6, 12, 11.3, 10.6,
     10, 9.3, 8.6, 8, 7.3, 6.6, 6, 5.3, 4.6, 4, 3.3, 2.6, 2, 1.3, 0.6];
-  var P_MAX_KUNSTSTOF = [1, 1, 1, 1, 1, 1];
+  // v1.68 (opdrachtgever 19-11-2026): kunststof (alleen trapezium) volgt de
+  // grenskromme p tegen glijsnelheid van een zelfsmerende PA6 + MoS2-moer,
+  // droog, continu bedrijf, 23 °C (Onderzoek/2026-11-19-kunststofmoeren-
+  // trapeziumcatalogus.md §2.1), afgelezen en naar beneden afgerond. Was
+  // 1 N/mm² tot 0,6 m/s (KAMMERER p.132). Hoogste glijsnelheid 3,3 m/s
+  // (200 m/min). De begrenzing van de inschakelduur op 10 % blijft staan.
+  var P_MAX_KUNSTSTOF = [7, 5, 4, 2.7, 1.8, 1.1, 0.9, 0.7, 0.6, 0.5,
+    0.45, 0.42, 0.4, 0.37, 0.35, 0.34, 0.33, 0.32, 0.31, 0.3,
+    0.29, 0.28, 0.27, 0.26, 0.25, 0.24, 0.23, 0.22, 0.21, 0.21, 0.2, 0.2, 0.2];
 
   function pMaxRij(moermateriaal) {
     if (moermateriaal !== 'brons' && moermateriaal !== 'kunststof') {
@@ -6483,7 +6492,8 @@ var WizardLogica = (function () {
           optie('brons', 'Brons (CuSn7ZnPb)', 'Standaard; hoogste toelaatbare vlaktedruk en glijsnelheid'),
           optie('kunststof', 'Kunststof',
             'Stil en zonder smering; voor lichte tot matige belasting en korte bewegingen met pauzes ' +
-            '(inschakelduur hoogstens 10 %). Lagere grens voor vlaktedruk (1 N/mm²) en glijsnelheid (0,6 m/s)')
+            '(inschakelduur hoogstens 10 %). Lagere toelaatbare vlaktedruk: circa 7 N/mm² bij 0,1 m/s, ' +
+            'dalend tot circa 1 N/mm² bij 0,6 m/s')
         ]
       }));
     }
