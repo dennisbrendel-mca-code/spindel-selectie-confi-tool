@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.65  19-11-2026  FB-016: melding bij een hoge tolerantie in stap 2 opvallender (kader in MCA-roze, kop "Geen automatisch advies: MCA adviseert u") en schuift in beeld
   1.64  19-11-2026  FB-015: overzicht "Uw antwoorden" op het resultaatscherm, per stap met een knop "Wijzig"
   1.63  19-11-2026  FB-014 vervolg: klasse P1 ook genoemd in stap 1, stap 2, de klassetoelichting in de configurator en de offerte
   1.62  19-11-2026  FB-014: kaart "Advies door MCA" noemt bij tolerantie zeer hoog klasse P1 of P3 (hoog blijft P3 of P5)
@@ -394,6 +395,13 @@ code.bestelcode {
 .wiz-alert.kritiek { background: #fde8ea; border-color: var(--linear); color: #7a1a2a; }
 .wiz-alert.info { background: #eef1fb; border-color: var(--robotics); color: var(--motion); }
 .wiz-alert .wiz-alert-icoon { flex-shrink: 0; font-size: 1.05rem; }
+/* FB-016 (v1.65): een melding die de route verandert valt meer op. */
+.wiz-alert.opvallend {
+  background: #fde8f1; border: 2px solid var(--linear); border-left-width: 6px; color: var(--motion);
+  font-size: .95rem; padding: 16px 18px; box-shadow: 0 2px 10px rgba(190,0,104,.15);
+}
+.wiz-alert.opvallend .wiz-alert-icoon { font-size: 1.4rem; color: var(--linear); }
+.wiz-alert-titel { display: block; font-weight: 700; color: var(--linear); margin-bottom: 4px; }
 
 .wiz-resultaat .kaart { margin-bottom: 16px; }
 .wiz-resultaat-tabel { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
@@ -493,7 +501,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.64 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.65 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -11594,17 +11602,26 @@ var Afbeeldingen = (function () {
     return kaart;
   }
 
-  function wizAlert(tekst, soort) {
+  // FB-016 (v1.65): optioneel een titel boven de tekst.
+  function wizAlert(tekst, soort, titel) {
     var div = document.createElement('div');
     div.className = 'wiz-alert' + (soort ? ' ' + soort : '');
     var icoon = document.createElement('span');
     icoon.className = 'wiz-alert-icoon';
-    icoon.textContent = soort === 'kritiek' ? '⚠' : (soort === 'info' ? 'ℹ' : '⚠');
+    icoon.textContent = soort === 'info' ? 'ℹ' : '⚠';
     div.appendChild(icoon);
+    var tekstVak = document.createElement('div');
+    if (titel) {
+      var titelEl = document.createElement('strong');
+      titelEl.className = 'wiz-alert-titel';
+      titelEl.textContent = titel;
+      tekstVak.appendChild(titelEl);
+    }
     var tekstSpan = document.createElement('span');
     tekstSpan.className = 'wiz-alert-tekst';
     tekstSpan.textContent = tekst;
-    div.appendChild(tekstSpan);
+    tekstVak.appendChild(tekstSpan);
+    div.appendChild(tekstVak);
     return div;
   }
 
@@ -12272,17 +12289,29 @@ var Afbeeldingen = (function () {
   // klant niet pas in de laatste stap hoort dat de tool geen advies geeft.
   var WIZ_LIVE_MELDING = {
     smering: { id: 'wizSmeringMelding', soort: 'kritiek', tekst: function (a) { return WizardLogica.smeringMelding(a); } },
-    tolerantie: { id: 'wizPrecisieMelding', soort: 'info', tekst: function (a) { return WizardLogica.precisieMelding(a); } },
+    tolerantie: { id: 'wizPrecisieMelding', soort: 'opvallend', titel: 'Geen automatisch advies: MCA adviseert u',
+      inBeeld: true, tekst: function (a) { return WizardLogica.precisieMelding(a); } },
     slag: { id: 'wizSpoedfoutMelding', soort: null, tekst: function (a) { return WizardLogica.spoedfoutMelding(wizAntwoordenVoorAdvies()); } }
   };
+  // FB-016: of een live melding al zichtbaar was (een klik tekent de stap opnieuw).
+  var wizLiveGetoond = {};
   function wizWerkBewegingMeldingBij() {
     Object.keys(WIZ_LIVE_MELDING).forEach(function (sleutel) {
       var live = WIZ_LIVE_MELDING[sleutel];
       var liveVak = document.getElementById(live.id);
       if (!liveVak) return;
+      var hadMelding = !!wizLiveGetoond[live.id];
       liveVak.innerHTML = ''; // wist de container; geen data hierin
       var liveTekst = live.tekst(wizAntwoorden);
-      if (liveTekst) liveVak.appendChild(wizAlert(liveTekst, live.soort));
+      wizLiveGetoond[live.id] = !!liveTekst;
+      if (liveTekst) {
+        var alertEl = wizAlert(liveTekst, live.soort, live.titel);
+        liveVak.appendChild(alertEl);
+        // FB-016 (v1.65): een nieuwe opvallende melding in beeld schuiven.
+        if (live.inBeeld && !hadMelding && typeof alertEl.scrollIntoView === 'function') {
+          alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
     });
     var vak = document.getElementById('wizBewegingMelding');
     if (!vak) return;
