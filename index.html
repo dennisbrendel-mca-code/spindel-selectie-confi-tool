@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.67  19-11-2026  Leverprogramma RVS 316 (1.4401) trapeziumspindels: E = RVS 316 bij elke maat behalve Tr 48×8, links en rechts; D = RVS 304 volgens de catalogustabel
   1.66  19-11-2026  FB-017: lagerconfiguratie los – los vervalt als keuze in de wizard en de configurator
   1.65  19-11-2026  FB-016: melding bij een hoge tolerantie in stap 2 opvallender (kader in MCA-roze, kop "Geen automatisch advies: MCA adviseert u") en schuift in beeld
   1.64  19-11-2026  FB-015: overzicht "Uw antwoorden" op het resultaatscherm, per stap met een knop "Wijzig"
@@ -502,7 +503,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.66 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.67 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -880,7 +881,7 @@ var Catalogus = (function () {
 
   // p.19 — overzicht trapeziumspindels, DIN 103, lengtes tot 3000 mm.
   // Vier uitvoeringskolommen, elk met de leverbare draadrichting:
-  // [diameter, spoed, C35 gerold, C45 gewerveld, RVS gerold, RVS gewerveld, C dyn BFM, d3]
+  // [diameter, spoed, C35 gerold, C45 gewerveld, RVS gerold, RVS gewerveld, C dyn BFM, d3, RVS 316]
   // Waarde 'L+R' = links en rechts leverbaar, 'R' = alleen rechts, null = niet leverbaar.
   // LET OP: Tr 10x3 en Tr 70x10 zijn alleen in C45 gewerveld leverbaar, niet in C35.
   //
@@ -904,26 +905,33 @@ var Catalogus = (function () {
   // volgt uit dezelfde formule. Dit is de enige plek waar d3 voor trapezium
   // staat; knik en kritisch toerental rekenen ermee zoals bij kogelomloop
   // (MCA p.34–35).
+  // Negende kolom (v1.67, opdrachtgever 19-11-2026): leverprogramma RVS
+  // trapeziumspindels in AISI 316 (1.4401), enkelgangig, links en rechts
+  // (Overzicht-Spindels-RVS316.pdf). Bestelcode E = RVS 316 hoort sindsdien
+  // bij deze kolom; D = RVS 304 bij de RVS-kolommen van p.19. Zonder
+  // voorraadstatus (besluit opdrachtgever). Maten uit dat programma die hier
+  // niet staan (o.a. Tr 10×2, 25×5, 35×6, 80×10 en de meergangige maten)
+  // ontbreken in de moertabel en blijven daarom buiten de tool.
   var TR = [
-    [10,  3, null,  'L+R', null,  null, 2.8,   6.5],
-    [12,  3, 'L+R', 'L+R', 'L+R', 'R',  3.9,   8.5],
-    [14,  3, 'L+R', 'L+R', null,  null, 5.4,   10.5],
-    [16,  4, 'L+R', 'L+R', 'L+R', 'R',  7.0,   11.5],
-    [18,  4, 'L+R', 'L+R', 'R',   'R',  9.0,   13.5],
-    [20,  4, 'L+R', 'L+R', 'L+R', 'R',  11.3,  15.5],
-    [22,  5, 'L+R', 'L+R', null,  null, 13.4,  16.5],
-    [24,  5, 'L+R', 'L+R', 'L+R', 'R',  16.2,  18.5],
-    [26,  5, 'L+R', 'L+R', 'R',   'R',  16.3,  20.5],
-    [28,  5, 'L+R', 'L+R', 'R',   'R',  22.4,  22.5],
-    [30,  6, 'L+R', 'L+R', 'L+R', 'R',  25.4,  23],
-    [32,  6, 'L+R', 'L+R', 'L+R', 'R',  29.1,  25],
-    [36,  6, 'L+R', 'L+R', 'L+R', 'R',  37.3,  29],
-    [40,  7, 'L+R', 'L+R', 'L+R', 'R',  45.8,  32],
-    [44,  7, 'L+R', 'L+R', null,  null, 55.9,  36],
-    [48,  8, 'L+R', 'L+R', null,  null, null,  39],
-    [50,  8, 'L+R', 'L+R', 'L+R', 'R',  66.3,  41],
-    [60,  9, 'L+R', 'L+R', null,  null, 104.6, 50],
-    [70, 10, null,  'L+R', null,  null, 142.9, 59]
+    [10,  3, null,  'L+R', null,  null, 2.8,   6.5, 'L+R'],
+    [12,  3, 'L+R', 'L+R', 'L+R', 'R',  3.9,   8.5, 'L+R'],
+    [14,  3, 'L+R', 'L+R', null,  null, 5.4,   10.5, 'L+R'],
+    [16,  4, 'L+R', 'L+R', 'L+R', 'R',  7.0,   11.5, 'L+R'],
+    [18,  4, 'L+R', 'L+R', 'R',   'R',  9.0,   13.5, 'L+R'],
+    [20,  4, 'L+R', 'L+R', 'L+R', 'R',  11.3,  15.5, 'L+R'],
+    [22,  5, 'L+R', 'L+R', null,  null, 13.4,  16.5, 'L+R'],
+    [24,  5, 'L+R', 'L+R', 'L+R', 'R',  16.2,  18.5, 'L+R'],
+    [26,  5, 'L+R', 'L+R', 'R',   'R',  16.3,  20.5, 'L+R'],
+    [28,  5, 'L+R', 'L+R', 'R',   'R',  22.4,  22.5, 'L+R'],
+    [30,  6, 'L+R', 'L+R', 'L+R', 'R',  25.4,  23, 'L+R'],
+    [32,  6, 'L+R', 'L+R', 'L+R', 'R',  29.1,  25, 'L+R'],
+    [36,  6, 'L+R', 'L+R', 'L+R', 'R',  37.3,  29, 'L+R'],
+    [40,  7, 'L+R', 'L+R', 'L+R', 'R',  45.8,  32, 'L+R'],
+    [44,  7, 'L+R', 'L+R', null,  null, 55.9,  36, 'L+R'],
+    [48,  8, 'L+R', 'L+R', null,  null, null,  39, null],
+    [50,  8, 'L+R', 'L+R', 'L+R', 'R',  66.3,  41, 'L+R'],
+    [60,  9, 'L+R', 'L+R', null,  null, 104.6, 50, 'L+R'],
+    [70, 10, null,  'L+R', null,  null, 142.9, 59, 'L+R']
   ];
 
   // De RVS-kwaliteiten die de catalogus noemt. Welke kwaliteit bij welke
@@ -937,6 +945,8 @@ var Catalogus = (function () {
     if (r[3]) uitvoeringen.push({ materiaal: 'C45', bewerking: 'gewerveld', draadrichting: r[3] });
     if (r[4]) uitvoeringen.push({ materiaal: 'RVS', bewerking: 'gerold',    draadrichting: r[4] });
     if (r[5]) uitvoeringen.push({ materiaal: 'RVS', bewerking: 'gewerveld', draadrichting: r[5] });
+    // v1.67: RVS 316 uit het leverprogramma; dat noemt geen bewerking.
+    if (r[8]) uitvoeringen.push({ materiaal: 'RVS 316', bewerking: null, draadrichting: r[8] });
 
     // Bewust GEEN samengeknepen draadrichting meer op maatniveau: die
     // maakte een linksgangige RVS Tr 18×4 configureerbaar terwijl alleen de
@@ -955,8 +965,8 @@ var Catalogus = (function () {
       cDynBFM: r[6] === undefined ? null : r[6],
       // Kerndiameter volgens DIN 103 (achtste kolom, zie hierboven).
       d3: r[7],
-      rvsKwaliteiten: uitvoeringen.some(function (u) { return u.materiaal === 'RVS'; })
-        ? RVS_KWALITEITEN : []
+      rvsKwaliteiten: (uitvoeringen.some(function (u) { return u.materiaal === 'RVS'; }) ? RVS_KWALITEITEN : [])
+        .concat(uitvoeringen.some(function (u) { return u.materiaal === 'RVS 316'; }) ? ['RVS 316 (1.4401)'] : [])
     };
   });
 
@@ -2119,7 +2129,8 @@ var ConfiguratorLogica = (function () {
     { code: 'A', materiaal: 'C35', label: 'A – C35' },
     { code: 'B', materiaal: 'C45', label: 'B – C45' },
     { code: 'D', materiaal: 'RVS', label: 'D – RVS 304' },
-    { code: 'E', materiaal: 'RVS', label: 'E – RVS 316' }
+    // v1.67: E volgt het leverprogramma RVS 316 (1.4401).
+    { code: 'E', materiaal: 'RVS 316', label: 'E – RVS 316' }
   ];
 
   function uitvoeringenVoorSpindelmateriaal(maat, code) {
