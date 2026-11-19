@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.63  19-11-2026  FB-014 vervolg: klasse P1 ook genoemd in stap 1, stap 2, de klassetoelichting in de configurator en de offerte
   1.62  19-11-2026  FB-014: kaart "Advies door MCA" noemt bij tolerantie zeer hoog klasse P1 of P3 (hoog blijft P3 of P5)
   1.61  19-11-2026  FB-013: positie-/beide-nauwkeurigheid met tolerantie gemiddeld toetst de T7-spoedfout over de slag (boven ±0,2 mm via MCA, vanaf ±0,05 mm een let-op); wizardantwoorden blijven na verversen bewaard (met "Begin opnieuw")
   1.60  19-11-2026  FB-012: stappenbalk in de voorselectie; elke stap is direct aan te klikken zodra de stappen ervóór zijn ingevuld
@@ -483,7 +484,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.62 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.63 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -6249,7 +6250,7 @@ var WizardLogica = (function () {
           // Spec 2026-10-02-lead-screw-gerold-miniatuur-ontwerp §3: kogelomloop
           // is altijd gerold (geen geslepen variant meer); de hogere klassen
           // lopen via de product engineers van MCA.
-          { label: 'Nauwkeurigheid', kogelomloop: 'gerold T7 (C5 bij FSCR/FDCR); P5/P3 via MCA (gewerveld of geslepen)',
+          { label: 'Nauwkeurigheid', kogelomloop: 'gerold T7 (C5 bij FSCR/FDCR); P5, P3 en P1 via MCA (gewerveld of geslepen)',
             trapezium: 'DIN 103 – spindel 7e, moer 7H',
             draadspindel: 'spoednauwkeurigheid 76 µm per 300 mm' },
           { label: 'Zelfremming', kogelomloop: 'niet van toepassing',
@@ -6288,7 +6289,7 @@ var WizardLogica = (function () {
       // opdrachtgever 02-10-2026): alle kogelomloopspindels zijn gerold; de
       // vraag bepaalt alleen nog de precisieklasse, niet meer het proces.
       toelichting: 'Uw antwoord bepaalt welke precisieklasse bij uw toepassing hoort. De standaardspindels zijn ' +
-        'gerold (T7). Een hogere nauwkeurigheid (P5/P3, gewerveld of geslepen) stemmen de product engineers van MCA met u af.',
+        'gerold (T7). Een hogere nauwkeurigheid (P5, P3 of P1, gewerveld of geslepen) stemmen de product engineers van MCA met u af.',
       vragen: [
         vraag({
           sleutel: 'nauwkeurigheid',
@@ -8201,7 +8202,7 @@ var Offerte = (function () {
     // in het ui-blok), letterlijk uit de spec. Alleen bij P3/P5 — T7 blijft
     // "gewoon advies" (feedback opdrachtgever 01-10-2026 punt 2).
     if (cfg.klasse === 'P3' || cfg.klasse === 'P5') {
-      regels.push('Voor klasse P3 en P5 bepalen de product engineers van MCA de spindeloplossing; ' +
+      regels.push('Voor de klassen P1, P3 en P5 bepalen de product engineers van MCA de spindeloplossing; ' +
         'zij beoordelen uw aanvraag.');
     }
 
@@ -9605,7 +9606,7 @@ var Afbeeldingen = (function () {
   // <p class="toelichting"> die bouwVeld() alvast neerzet, hier gevuld/
   // verborgen) — alleen bestaat #invoer-klasse enkel bij kogelomloop
   // (ALLEEN_KOGEL), vandaar de guard op het ontbreken van de select/uitleg.
-  var KLASSE_TOELICHTING_TEKST = 'Voor klasse P3 en P5 bepalen de product engineers van MCA de ' +
+  var KLASSE_TOELICHTING_TEKST = 'Voor de klassen P1, P3 en P5 bepalen de product engineers van MCA de ' +
     'spindeloplossing; zij beoordelen uw aanvraag.';
   function vulKlasseToelichting() {
     var select = document.getElementById('invoer-klasse');
