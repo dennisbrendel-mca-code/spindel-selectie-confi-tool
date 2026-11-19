@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.66  19-11-2026  FB-017: lagerconfiguratie los – los vervalt als keuze in de wizard en de configurator
   1.65  19-11-2026  FB-016: melding bij een hoge tolerantie in stap 2 opvallender (kader in MCA-roze, kop "Geen automatisch advies: MCA adviseert u") en schuift in beeld
   1.64  19-11-2026  FB-015: overzicht "Uw antwoorden" op het resultaatscherm, per stap met een knop "Wijzig"
   1.63  19-11-2026  FB-014 vervolg: klasse P1 ook genoemd in stap 1, stap 2, de klassetoelichting in de configurator en de offerte
@@ -501,7 +502,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.65 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.66 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -2448,7 +2449,8 @@ var ConfiguratorLogica = (function () {
 
   function belastingVelden(type) {
     return BELASTING_VELDEN.map(function (v) {
-      var opties = v.naam === 'lagering' ? Object.keys(Rekenkern.LAGERFACTOR)
+      // FB-017 (v1.66): los-los is geen keuze meer; de rekenkern kent hem nog.
+      var opties = v.naam === 'lagering' ? Object.keys(Rekenkern.LAGERFACTOR).filter(function (l) { return l !== 'los-los'; })
         : v.naam === 'fs' ? Rekenkern.FS_KEUZES.slice() : v.opties;
       return { naam: v.naam, label: v.label, opties: opties, zichtbaar: v.zichtbaar(type) };
     });
@@ -6800,7 +6802,7 @@ var WizardLogica = (function () {
             optie('vast-vast', 'Vast – vast', 'Aan beide kanten een vast lager: de hoogste knikkracht en het hoogste toerental, voor lange spindels'),
             optie('vast-los', 'Vast – los', 'Standaardopstelling: het vaste lager neemt de axiale kracht op, het losse lager ondersteunt alleen'),
             optie('vast-vrij', 'Vast – vrij', 'Eén kant vrij: alleen voor korte spindels en lage toerentallen'),
-            optie('los-los', 'Los – los', 'Aan beide kanten alleen ondersteund: voor een lichte belasting en een korte afstand'),
+            // FB-017 (v1.66, opdrachtgever 19-11-2026): los-los vervalt als keuze.
             // v1.50 (controle 13-10-2026): de tool rekent dan met vast-los.
             optie('weetniet', 'Weet ik niet', 'De tool rekent met vast-los, de gangbare opstelling')
           ]
