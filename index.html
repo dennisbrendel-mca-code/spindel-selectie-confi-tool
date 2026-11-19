@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.64  19-11-2026  FB-015: overzicht "Uw antwoorden" op het resultaatscherm, per stap met een knop "Wijzig"
   1.63  19-11-2026  FB-014 vervolg: klasse P1 ook genoemd in stap 1, stap 2, de klassetoelichting in de configurator en de offerte
   1.62  19-11-2026  FB-014: kaart "Advies door MCA" noemt bij tolerantie zeer hoog klasse P1 of P3 (hoog blijft P3 of P5)
   1.61  19-11-2026  FB-013: positie-/beide-nauwkeurigheid met tolerantie gemiddeld toetst de T7-spoedfout over de slag (boven ±0,2 mm via MCA, vanaf ±0,05 mm een let-op); wizardantwoorden blijven na verversen bewaard (met "Begin opnieuw")
@@ -298,6 +299,14 @@ code.bestelcode {
 .wiz-progress-bar { height: 6px; background: var(--offwhite); border-radius: 4px; overflow: hidden; border: 1px solid var(--rand); }
 /* FB-012 (v1.60): per stap een knop, zodat de klant na het resultaat (of
    vanuit de configurator) direct naar een eerdere stap springt. */
+/* FB-015 (v1.64): overzicht van de antwoorden op het resultaatscherm. */
+.wiz-overzicht { margin-top: 18px; }
+.wiz-overzicht-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px 22px; }
+.wiz-overzicht-kop { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--motion); }
+.wiz-overzicht-wijzig { padding: 3px 10px; font-size: .74rem; }
+.wiz-overzicht-stap dl { margin: 0; font-size: .84rem; }
+.wiz-overzicht-stap dt { color: var(--gedempt); margin-top: 4px; }
+.wiz-overzicht-stap dd { margin: 0 0 0 0; font-weight: 600; }
 .wiz-stapnav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .wiz-stapknop {
   font: inherit; font-size: .78rem; padding: 4px 10px; border-radius: 14px; cursor: pointer;
@@ -484,7 +493,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.63 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.64 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -6944,6 +6953,35 @@ var WizardLogica = (function () {
     ];
   }
 
+  // FB-015 (v1.64): overzicht van de ingevulde antwoorden, per stap (zonder
+  // de resultaatstap), met de index om naar die stap terug te springen.
+  // Alleen zichtbare, beantwoorde vragen; keuzes als hun label, getallen met
+  // eenheid.
+  function overzichtGetal(x) {
+    var t = String(Math.round(x * 100) / 100).split('.');
+    t[0] = t[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return t.join(',');
+  }
+  function antwoordenOverzicht(a) {
+    var lijst = stappen(a.type);
+    return lijst.slice(0, -1).map(function (stap, index) {
+      var regels = [];
+      stap.vragen.forEach(function (v) {
+        if (!v.zichtbaar(a)) return;
+        var waarde = v.type === 'snelheid' ? a.snelheidMmS : a[v.sleutel];
+        if (waarde === undefined || waarde === null || waarde === '') return;
+        var antwoord;
+        var gekozen = (v.opties || []).filter(function (o) { return o.waarde === waarde; })[0];
+        if (gekozen) antwoord = gekozen.label;
+        else if (typeof waarde === 'number') antwoord = overzichtGetal(waarde) + (v.eenheid ? ' ' + v.eenheid : '');
+        else if (typeof waarde === 'string' || typeof waarde === 'boolean') antwoord = String(waarde);
+        else return;
+        regels.push({ vraag: v.tekst, antwoord: antwoord });
+      });
+      return { index: index, nummer: stap.nummer, titel: stap.titel, regels: regels };
+    });
+  }
+
   // ── Configvoorstel (stap 8 → configurator) ──────────────────────────────
   // KLASSE en SNELHEID_MM_S zijn de exacte tabellen uit de taak-10-brief, met
   // één toevoeging: 'zeerlangzaam' (tot 0,1 m/s, representatieve waarde 80
@@ -7730,6 +7768,7 @@ var WizardLogica = (function () {
     vraagtEngineering: vraagtEngineering,
     spoedfoutT7Mm: spoedfoutT7Mm,
     precisieKlasseTekst: precisieKlasseTekst,
+    antwoordenOverzicht: antwoordenOverzicht,
     spoedfoutMelding: spoedfoutMelding,
     bewegingsControle: bewegingsControle,
     smeringMelding: smeringMelding,
@@ -11505,6 +11544,56 @@ var Afbeeldingen = (function () {
   // Zelfde regel als bij de configurator hierboven: elke tekst die uit
   // Advies/ConfiguratorLogica/Bestelcode komt gaat via textContent, nooit
   // via innerHTML.
+  // FB-015 (v1.64): "Uw antwoorden" op het resultaatscherm, per stap met
+  // een knop "Wijzig" die direct naar die stap gaat.
+  function wizBouwOverzicht() {
+    var kaart = document.createElement('div');
+    kaart.className = 'kaart wiz-overzicht';
+    kaart.id = 'wizOverzicht';
+    var kop = document.createElement('div');
+    kop.className = 'kaart-kop';
+    kop.textContent = 'Uw antwoorden';
+    kaart.appendChild(kop);
+    var inhoud = document.createElement('div');
+    inhoud.className = 'kaart-inhoud wiz-overzicht-raster';
+    WizardLogica.antwoordenOverzicht(wizAntwoordenVoorAdvies()).forEach(function (stap) {
+      var blok = document.createElement('div');
+      blok.className = 'wiz-overzicht-stap';
+      var regelKop = document.createElement('div');
+      regelKop.className = 'wiz-overzicht-kop';
+      var titel = document.createElement('strong');
+      titel.textContent = stap.nummer + '. ' + stap.titel;
+      regelKop.appendChild(titel);
+      var wijzig = document.createElement('button');
+      wijzig.type = 'button';
+      wijzig.className = 'knop knop-ghost wiz-overzicht-wijzig';
+      wijzig.textContent = 'Wijzig';
+      wijzig.setAttribute('aria-label', 'Wijzig stap ' + stap.nummer + ': ' + stap.titel);
+      wijzig.addEventListener('click', function () { wizGoTo(stap.index); });
+      regelKop.appendChild(wijzig);
+      blok.appendChild(regelKop);
+      var dl = document.createElement('dl');
+      stap.regels.forEach(function (r) {
+        var dt = document.createElement('dt');
+        dt.textContent = r.vraag;
+        var dd = document.createElement('dd');
+        dd.textContent = r.antwoord;
+        dl.appendChild(dt);
+        dl.appendChild(dd);
+      });
+      if (!stap.regels.length) {
+        var leeg = document.createElement('p');
+        leeg.className = 'toelichting';
+        leeg.textContent = 'Geen antwoorden ingevuld.';
+        blok.appendChild(leeg);
+      }
+      blok.appendChild(dl);
+      inhoud.appendChild(blok);
+    });
+    kaart.appendChild(inhoud);
+    return kaart;
+  }
+
   function wizAlert(tekst, soort) {
     var div = document.createElement('div');
     div.className = 'wiz-alert' + (soort ? ' ' + soort : '');
@@ -12062,6 +12151,8 @@ var Afbeeldingen = (function () {
     // aan — beide spreken de kaart "Advies door MCA" hierboven tegen, die
     // juist zegt dat de tool hier GEEN advies geeft.
     if (!vraagtEngineering && !toonOverzicht) wizRenderHeroverweging(resultaatDiv);
+
+    resultaatDiv.appendChild(wizBouwOverzicht());
 
     var acties = document.createElement('div');
     acties.className = 'wiz-nav';
