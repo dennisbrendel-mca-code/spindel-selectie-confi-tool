@@ -4,6 +4,7 @@
   Bij elke update: versie +0.1 en de datum (dd-mm-jjjj), bovenaan toevoegen,
   en dezelfde versie en datum in de kopbalk zetten (id="toolVersie").
 
+  1.61  19-11-2026  FB-013: positie-/beide-nauwkeurigheid met tolerantie gemiddeld toetst de T7-spoedfout over de slag (boven ±0,2 mm via MCA, vanaf ±0,05 mm een let-op); wizardantwoorden blijven na verversen bewaard (met "Begin opnieuw")
   1.60  19-11-2026  FB-012: stappenbalk in de voorselectie; elke stap is direct aan te klikken zodra de stappen ervóór zijn ingevuld
   1.59  16-11-2026  Paginabreedte 1240px voor alle schermen (voorselectie, configurator, zelftest)
   1.58  16-11-2026  Besluiten 16-11: corrosief trapezium bronzen moer op RVS (voeding RVS-moer met let-op over lood); snelheid altijd als getal, categorieën vervallen; stappenmotor hoogstens 1.000 /min; f_s zonder trillingen 2,5 (was 1,3)
@@ -481,7 +482,7 @@ code.bestelcode {
     <div class="logo">MCA <span class="accent">linear</span> motion <span class="dim">robotics</span></div>
     <div class="scheiding"></div>
     <div class="titel" id="schermTitel">Spindel voorselectie</div>
-    <div class="versie" id="toolVersie">v1.60 · 19-11-2026</div>
+    <div class="versie" id="toolVersie">v1.61 · 19-11-2026</div>
   </div>
   <div class="topbar-rechts">
   <div class="acties">
@@ -7021,16 +7022,59 @@ var WizardLogica = (function () {
         'naar de product engineers van MCA.';
   }
 
-  function vraagtEngineering(a) {
-    if (a.type !== undefined && a.type !== 'kogelomloop' && a.type !== 'weet-niet') return false;
+  function isKogelomloopRoute(a) {
+    return a.type === undefined || a.type === 'kogelomloop' || a.type === 'weet-niet';
+  }
+
+  function tolerantieVraagtEngineering(a) {
+    if (!isKogelomloopRoute(a)) return false;
     var nauw = a.nauwkeurigheid;
     if (nauw !== 'herhaal' && nauw !== 'positie' && nauw !== 'beide') return false;
     return a.tolerantie === 'zeerhoog' || a.tolerantie === 'hoog';
   }
 
+  // FB-013 (v1.61, besluit opdrachtgever 19-11-2026): een gerolde spindel in
+  // klasse T7 mag 52 µm per 300 mm afwijken (v300p, ISO 3408-3); over de
+  // nuttige slag groeit dat lineair: e_p = ± slag/300 × 0,052 mm (Onderzoek/
+  // 2026-10-05-gerold-gewerveld-geslepen-spindels.md). Bij positie- (of
+  // beide) nauwkeurigheid met tolerantie "gemiddeld" (0,05 – 0,2 mm):
+  // boven 0,2 mm via MCA, tussen 0,05 en 0,2 mm een let-op. Herhaal-
+  // nauwkeurigheid hangt niet van de spoedfout over de slag af.
+  var T7_V300P_MM = 0.052;
+  var TOLERANTIE_GEMIDDELD_MM = { min: 0.05, max: 0.2 };
+  function spoedfoutT7Mm(slagMm) { return slagMm / 300 * T7_V300P_MM; }
+
+  function spoedfoutGeval(a) {
+    if (!isKogelomloopRoute(a)) return null;
+    if (a.nauwkeurigheid !== 'positie' && a.nauwkeurigheid !== 'beide') return null;
+    if (a.tolerantie !== 'gemiddeld') return null;
+    var slag = Number(a.slag);
+    if (!(slag > 0)) return null;
+    var fout = spoedfoutT7Mm(slag);
+    if (fout <= TOLERANTIE_GEMIDDELD_MM.min) return null;
+    return { slag: slag, fout: fout, teGroot: fout > TOLERANTIE_GEMIDDELD_MM.max };
+  }
+
+  function spoedfoutMelding(a) {
+    var g = spoedfoutGeval(a);
+    if (!g) return null;
+    var basis = 'Over uw slag van ' + nlDuizend(g.slag) + ' mm kan een gerolde spindel in klasse T7 tot ±' +
+      nlGetal(g.fout, 2) + ' mm afwijken van de exacte positie (52 µm per 300 mm). ';
+    return g.teGroot
+      ? basis + 'Dat is meer dan de tolerantie van 0,2 mm: de product engineers van MCA bepalen samen met u ' +
+        'de spindel, bijvoorbeeld een gewervelde of geslepen uitvoering.'
+      : basis + 'Heeft u een kleinere tolerantie nodig, vraag dan advies aan de product engineers van MCA.';
+  }
+
+  function vraagtEngineering(a) {
+    if (tolerantieVraagtEngineering(a)) return true;
+    var g = spoedfoutGeval(a);
+    return !!(g && g.teGroot);
+  }
+
   // v1.46 (review B9): al in stap 2 zeggen dat deze tolerantie via MCA loopt.
   function precisieMelding(a) {
-    if (!vraagtEngineering(a)) return null;
+    if (!tolerantieVraagtEngineering(a)) return null;
     return 'Voor deze tolerantie geeft de tool geen automatisch advies: de product engineers van MCA ' +
       'bepalen samen met u de spindel. Maak de vragen wel af; uw antwoorden gaan mee in de adviesaanvraag.';
   }
@@ -7676,6 +7720,8 @@ var WizardLogica = (function () {
     belastingBijConfiguratie: belastingBijConfiguratie,
     ontbreekt: ontbreekt,
     vraagtEngineering: vraagtEngineering,
+    spoedfoutT7Mm: spoedfoutT7Mm,
+    spoedfoutMelding: spoedfoutMelding,
     bewegingsControle: bewegingsControle,
     smeringMelding: smeringMelding,
     profielVoorstelUitAntwoorden: profielVoorstelUitAntwoorden,
@@ -11810,6 +11856,9 @@ var Afbeeldingen = (function () {
     // bij vraagtEngineering (M-1 hierboven): die melding hoort bij de
     // verborgen maatkeuze.
     if (cfg.lagerunitMelding && !vraagtEngineering && !toonOverzicht) resultaatDiv.appendChild(wizAlert(cfg.lagerunitMelding, null));
+    // FB-013 (v1.61): T7 haalt de tolerantie over de slag mogelijk niet.
+    var spoedMelding = WizardLogica.spoedfoutMelding(wizAntwoorden);
+    if (spoedMelding && !vraagtEngineering) resultaatDiv.appendChild(wizAlert(spoedMelding, null));
 
     if (cfg.d && vraagtEngineering) {
       // Spec §3: de advieskaart (maatvoering, bestelcode, grenzen) verdwijnt
@@ -11826,8 +11875,11 @@ var Afbeeldingen = (function () {
       var mcaInhoud = document.createElement('div');
       mcaInhoud.className = 'kaart-inhoud';
       var mcaTekst = document.createElement('p');
-      mcaTekst.textContent = 'Voor deze nauwkeurigheid (klasse P3 of P5) adviseert de tool geen ' +
-        'spindel: de product engineers van MCA bepalen samen met u de juiste oplossing.';
+      // FB-013 (v1.61): bij een te grote spoedfout over de slag die reden.
+      mcaTekst.textContent = WizardLogica.precisieMelding(wizAntwoorden)
+        ? 'Voor deze nauwkeurigheid (klasse P3 of P5) adviseert de tool geen ' +
+          'spindel: de product engineers van MCA bepalen samen met u de juiste oplossing.'
+        : WizardLogica.spoedfoutMelding(wizAntwoorden);
       mcaInhoud.appendChild(mcaTekst);
 
       var adviesKnop = document.createElement('button');
@@ -12109,6 +12161,7 @@ var Afbeeldingen = (function () {
       volgendeKnop.disabled = stap.vragen.some(wizVraagOnbeantwoord) || stap.vragen.some(wizFwOngeldig);
     }
     wizRenderStapNav(wizStappen());
+    wizBewaar();
     wizWerkBewegingMeldingBij();
   }
 
@@ -12119,7 +12172,8 @@ var Afbeeldingen = (function () {
   // klant niet pas in de laatste stap hoort dat de tool geen advies geeft.
   var WIZ_LIVE_MELDING = {
     smering: { id: 'wizSmeringMelding', soort: 'kritiek', tekst: function (a) { return WizardLogica.smeringMelding(a); } },
-    tolerantie: { id: 'wizPrecisieMelding', soort: 'info', tekst: function (a) { return WizardLogica.precisieMelding(a); } }
+    tolerantie: { id: 'wizPrecisieMelding', soort: 'info', tekst: function (a) { return WizardLogica.precisieMelding(a); } },
+    slag: { id: 'wizSpoedfoutMelding', soort: null, tekst: function (a) { return WizardLogica.spoedfoutMelding(wizAntwoordenVoorAdvies()); } }
   };
   function wizWerkBewegingMeldingBij() {
     Object.keys(WIZ_LIVE_MELDING).forEach(function (sleutel) {
@@ -12171,7 +12225,39 @@ var Afbeeldingen = (function () {
     });
   }
 
+  // v1.61 (besluit opdrachtgever 19-11-2026): de antwoorden blijven na
+  // verversen bewaard, alleen in deze browser. Zonder opslag (privévenster,
+  // geblokkeerd) werkt alles gewoon, alleen zonder herstel.
+  var WIZ_OPSLAG = 'mcaSpindelWizard';
+  var wizHersteld = false;
+  function wizBewaar() {
+    try {
+      if (!Object.keys(wizAntwoorden).length) { window.localStorage.removeItem(WIZ_OPSLAG); return; }
+      window.localStorage.setItem(WIZ_OPSLAG, JSON.stringify({ v: 1, a: wizAntwoorden, i: wizStapIndex }));
+    } catch (e) { /* geen opslag beschikbaar */ }
+  }
+  function wizHerstel() {
+    var data = null;
+    try { data = JSON.parse(window.localStorage.getItem(WIZ_OPSLAG) || 'null'); } catch (e) { data = null; }
+    if (!data || data.v !== 1 || !data.a || typeof data.a !== 'object' || !Object.keys(data.a).length) return;
+    Object.keys(data.a).forEach(function (k) { wizAntwoorden[k] = data.a[k]; });
+    var stappen = wizStappen();
+    var doel = Math.max(0, Math.min(Number(data.i) || 0, stappen.length - 1));
+    for (var i = 0; i < doel; i++) {
+      if (!wizStapCompleet(stappen[i])) { doel = i; break; }
+    }
+    wizStapIndex = doel;
+    wizHersteld = true;
+  }
+  function wizBeginOpnieuw() {
+    try { window.localStorage.removeItem(WIZ_OPSLAG); } catch (e) { /* geen opslag */ }
+    Object.keys(wizAntwoorden).forEach(function (k) { delete wizAntwoorden[k]; });
+    wizHersteld = false;
+    wizGoTo(0);
+  }
+
   function wizGoTo(index) {
+    wizHersteld = false;
     wizStapIndex = index;
     wizRenderStap();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -12217,8 +12303,21 @@ var Afbeeldingen = (function () {
     wizStepNameEl.textContent = stap.titel;
     wizProgressFillEl.style.width = (stap.nummer / stappen.length * 100) + '%';
     wizRenderStapNav(stappen);
+    wizBewaar();
 
     wizContainer.innerHTML = '';
+
+    if (wizHersteld) {
+      var hersteld = wizAlert('Uw eerdere antwoorden zijn teruggezet. Via de stappen hierboven past u ze aan.', 'info');
+      var opnieuw = document.createElement('button');
+      opnieuw.type = 'button';
+      opnieuw.id = 'wizBeginOpnieuw';
+      opnieuw.className = 'knop knop-ghost';
+      opnieuw.textContent = 'Begin opnieuw';
+      opnieuw.addEventListener('click', wizBeginOpnieuw);
+      hersteld.appendChild(opnieuw);
+      wizContainer.appendChild(hersteld);
+    }
 
     var eyebrow = document.createElement('div');
     eyebrow.className = 'wiz-eyebrow';
@@ -12346,6 +12445,7 @@ var Afbeeldingen = (function () {
   // Het zichtbare startscherm is de wizard: spec sectie 1, "de wizard is
   // een intelligente voorpagina, geen verplichte route".
   opnieuwOpbouwen('kogelomloop', STANDAARD.kogelomloop, STANDAARD_BELASTING);
+  wizHerstel();
   wizRenderStap();
   toonScherm('wizard');
 })();
